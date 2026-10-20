@@ -16,6 +16,7 @@ ready for leave-one-city-out and spatial-block cross-validation.
     python build_dataset.py --cities Pune Delhi   # a subset
     python build_dataset.py --half 8 --cities Pune --out data_test   # quick smoke test
     python build_dataset.py --osm                 # add OSM buildings / water / green / roads (slow)
+    python build_dataset.py --workers 3           # build 3 cities in parallel (use cores-1)
 
 Output (default ./data_multi)
     cities/<City>/aligned.nc         all layers, (y, x)
@@ -25,8 +26,12 @@ Runs are resumable: finished cities are skipped unless --force.
 """
 import argparse
 import json
+import os
 import re
+import shutil
+import sys
 import zipfile
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 import numpy as np
@@ -170,13 +175,16 @@ def get_ghsl(bbox, tmpl, cache):
             tif = cache / f"{stem}_{tile}.tif"
             if not tif.exists():
                 url = f"{GHSL_BASE}/{folder}/V1-0/tiles/{stem}_{tile}.zip"
-                zpath = cache / f"{stem}_{tile}.zip"
+                zpath = cache / f"{stem}_{tile}.{os.getpid()}.zip"      # per-process temp names: parallel-safe
+                tmpdir = cache / f"_tmp_{os.getpid()}"
                 try:
                     print(f"  GHSL {key} {tile}: downloading")
                     _download(url, zpath)
                     with zipfile.ZipFile(zpath) as z:
-                        z.extract(f"{stem}_{tile}.tif", cache)
+                        z.extract(f"{stem}_{tile}.tif", tmpdir)
+                    os.replace(tmpdir / f"{stem}_{tile}.tif", tif)          # atomic: tif is never half-written
                     zpath.unlink()
+                    shutil.rmtree(tmpdir, ignore_errors=True)
                 except Exception as e:  # noqa: BLE001
                     print(f"  !! GHSL {key} {tile} failed: {e}")
                     continue
@@ -391,6 +399,35 @@ def build_city(name, args, cat, out_root):
           f"scenes {len(dates)}")
 
 
+class _Prefix:
+    """Tag every output line with the city so parallel logs stay readable."""
+    def __init__(self, tag, stream):
+        self.tag, self.stream, self.buf = tag, stream, ""
+
+    def write(self, text):
+        self.buf += text
+        while "\n" in self.buf:
+            line, self.buf = self.buf.split("\n", 1)
+            self.stream.write(f"[{self.tag}] {line}\n")
+        self.stream.flush()
+
+    def flush(self):
+        self.stream.flush()
+
+
+def _run_city(name, args, out_root, threads):
+    """Entry point of one worker process: builds a single city."""
+    import dask
+    dask.config.set(scheduler="threads", num_workers=threads)     # share the cores between workers
+    if args.workers > 1:
+        sys.stdout = _Prefix(name, sys.__stdout__)
+    try:
+        build_city(name, args, catalog(), out_root)
+    finally:
+        sys.stdout = sys.__stdout__
+    return name
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--cities", nargs="*", default=["all"])
@@ -402,6 +439,8 @@ def main():
     ap.add_argument("--osm", action="store_true", help="add OSM buildings/water/green (slow for big cities)")
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--out", default="data_multi")
+    ap.add_argument("--workers", type=int, default=1,
+                    help="cities built in parallel (one process each). Try cores-1; each needs a few GB of RAM")
     args = ap.parse_args()
 
     names = list(CITIES) if args.cities == ["all"] else args.cities
@@ -409,14 +448,28 @@ def main():
     if bad:
         raise SystemExit(f"unknown cities {bad}; choose from {list(CITIES)}")
     out_root = Path(args.out)
-    cat = catalog()
+    workers = max(1, min(args.workers, len(names)))
+    threads = max(1, (os.cpu_count() or 1) // workers)
+    print(f"{len(names)} cities | {workers} parallel worker(s) | {threads} dask thread(s) each")
     failed = []
-    for n in names:
-        try:
-            build_city(n, args, cat, out_root)
-        except Exception as e:  # noqa: BLE001  one bad city must not kill a long run
-            print(f"!! {n} failed: {type(e).__name__}: {e}")
-            failed.append(n)
+    if workers == 1:
+        for n in names:
+            try:
+                _run_city(n, args, out_root, threads)
+            except Exception as e:  # noqa: BLE001  one bad city must not kill a long run
+                print(f"!! {n} failed: {type(e).__name__}: {e}")
+                failed.append(n)
+    else:
+        import multiprocessing as mp
+        with ProcessPoolExecutor(workers, mp_context=mp.get_context("spawn")) as ex:
+            futs = {ex.submit(_run_city, n, args, out_root, threads): n for n in names}
+            for f in as_completed(futs):
+                n = futs[f]
+                try:
+                    f.result()
+                except Exception as e:  # noqa: BLE001
+                    print(f"!! {n} failed: {type(e).__name__}: {e}")
+                    failed.append(n)
 
     tabs = sorted((out_root / "cities").glob("*/table.csv.gz"))
     if tabs:
