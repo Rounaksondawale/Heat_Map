@@ -46,7 +46,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--src", default="../data/multi_city/all_cities_training.csv.gz")
     ap.add_argument("--dst", default=None)
-    ap.add_argument("--drop-nan-city", nargs="*", default=["Mumbai"])
+    ap.add_argument("--drop-nan-city", nargs="*", default=["Mumbai", "Delhi"],
+                    help="Mumbai: GHSL NaN; Delhi: ~600 DEM-gap pixels (ELEV / SLOPE_deg)")
+    ap.add_argument("--keep-bad-indices", action="store_true",
+                    help="do not drop rows whose NDVI / NDBI / MNDWI / ELEV are outside the physical range")
     ap.add_argument("--allow-missing-cities", action="store_true", help="for partial / test runs")
     a = ap.parse_args()
     src = Path(a.src)
@@ -69,6 +72,23 @@ def main():
                   f"(80 = water)")
             nan_cols = df.loc[bad, feat].isna().any()
             print(f"   NaN columns: {nan_cols[nan_cols].index.tolist()}\n")
+            df = df[~bad].reset_index(drop=True)
+
+    # ------------------------------------------------ 1b. drop pixels with impossible spectral indices / elevation
+    # Per-scene indices are in [-1, 1], but the scene means blow up where nir+red (or green+swir...) is ~0 or
+    # negative after the surface-reflectance offset: dark water pixels (Chennai, Mumbai coast). Those values are noise.
+    if not a.keep_bad_indices:
+        bad = pd.Series(False, index=df.index)
+        for col in ("NDVI", "NDBI", "MNDWI", "ELEV"):
+            lo, hi = RANGES[col]
+            b = (df[col] < lo) | (df[col] > hi)
+            if b.any():
+                print(f"{col}: {int(b.sum()):,} rows outside [{lo}, {hi}] " +
+                      str(df.loc[b, "city"].value_counts().to_dict()))
+            bad |= b
+        if bad.any():
+            wl = df.loc[bad, "LANDCOVER"].value_counts(normalize=True).round(2).head(4).to_dict()
+            print(f"dropping {int(bad.sum()):,} rows ({bad.mean():.2%} of all); LANDCOVER of dropped rows: {wl}\n")
             df = df[~bad].reset_index(drop=True)
 
     # ------------------------------------------------ 2. validation
