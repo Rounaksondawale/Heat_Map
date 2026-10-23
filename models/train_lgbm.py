@@ -114,12 +114,12 @@ def city_metrics(df, pred_col):
     return pd.DataFrame(rows).set_index("city")
 
 
-def maps(df, out_dir):
+def maps(df, out_dir, label="held-out city"):
     out_dir.mkdir(parents=True, exist_ok=True)
     for c, g in df.groupby("city"):
         fig, ax = plt.subplots(1, 3, figsize=(17, 5.5), sharex=True, sharey=True)
         lim = float(np.nanpercentile(np.abs(g["TARGET"]), 99))
-        for a, col, title in ((ax[0], "TARGET", "observed heat anomaly"), (ax[1], "pred_lgbm", "predicted (held-out city)")):
+        for a, col, title in ((ax[0], "TARGET", "observed heat anomaly"), (ax[1], "pred_lgbm", f"predicted ({label})")):
             s = a.scatter(g["x"], g["y"], c=g[col], s=1.2, marker="s", cmap="RdYlBu_r", vmin=-lim, vmax=lim, linewidths=0)
             a.set_title(f"{c}: {title}")
             plt.colorbar(s, ax=a, shrink=0.8)
