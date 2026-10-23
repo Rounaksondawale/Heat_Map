@@ -30,6 +30,7 @@ import os
 import re
 import shutil
 import sys
+import time
 import zipfile
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
@@ -116,24 +117,52 @@ def get_landsat(cat, bbox, crs, years, months, cloud_max, max_scenes):
     if len(items) < 4:
         raise RuntimeError("too few clear Landsat scenes; widen --months/--years or raise cloud limit")
 
-    raw = load(items, bands=["lwir11", "qa_pixel", "blue", "green", "red", "nir08", "swir16", "swir22"],
-               bbox=bbox, crs=f"EPSG:{crs}", resolution=RES, groupby="solar_day",
-               chunks={"x": 512, "y": 512}, fail_on_error=False)
-    bad = (raw["qa_pixel"].astype("uint16") & 0b11111) != 0      # fill, dilated cloud, cirrus, cloud, shadow
-    sr = lambda b: (raw[b].where(raw[b] > 0) * 0.0000275 - 0.2).where(~bad)   # noqa: E731
-    blue, green, red, nir, sw1, sw2 = (sr(b) for b in ["blue", "green", "red", "nir08", "swir16", "swir22"])
-    lst = (raw["lwir11"].where(raw["lwir11"] > 0) * 0.00341802 + 149.0 - 273.15).where(~bad)
+    # Load in small batches and re-sign the URLs right before each one: Planetary Computer's SAS tokens
+    # expire after ~1 h, and a slow city used to lose its remaining scenes ("not recognized as being
+    # in a supported file format") with fail_on_error=False hiding it. Means are rebuilt from sums/counts.
+    import planetary_computer as pc
+    BATCH = 8
+    names = ["LST", "NDVI", "NDBI", "MNDWI", "ALBEDO"]
+    tot = {k: 0 for k in names}
+    cnt = {k: 0 for k in names}
+    sumsq, all_dates = 0, []
+    for i in range(0, len(items), BATCH):
+        batch = []
+        for it in items[i:i + BATCH]:
+            it = it.clone()
+            for a in it.assets.values():
+                a.href = a.href.split("?")[0]                 # drop the old (possibly expired) token
+            pc.sign_inplace(it)
+            batch.append(it)
+        raw = load(batch, bands=["lwir11", "qa_pixel", "blue", "green", "red", "nir08", "swir16", "swir22"],
+                   bbox=bbox, crs=f"EPSG:{crs}", resolution=RES, groupby="solar_day",
+                   chunks={"x": 512, "y": 512}, fail_on_error=False)
+        bad = (raw["qa_pixel"].astype("uint16") & 0b11111) != 0      # fill, dilated cloud, cirrus, cloud, shadow
+        sr = lambda b: (raw[b].where(raw[b] > 0) * 0.0000275 - 0.2).where(~bad)   # noqa: E731
+        blue, green, red, nir, sw1, sw2 = (sr(b) for b in ["blue", "green", "red", "nir08", "swir16", "swir22"])
+        lst = (raw["lwir11"].where(raw["lwir11"] > 0) * 0.00341802 + 149.0 - 273.15).where(~bad)
+        layers = {
+            "LST": lst,
+            "NDVI": (nir - red) / (nir + red),
+            "NDBI": (sw1 - nir) / (sw1 + nir),
+            "MNDWI": (green - sw1) / (green + sw1),
+            "ALBEDO": 0.356 * blue + 0.130 * red + 0.373 * nir + 0.085 * sw1 + 0.072 * sw2 - 0.0018,
+        }
+        part = xr.Dataset({**{f"s_{k}": v.astype("float64").sum("time", skipna=True) for k, v in layers.items()},
+                           **{f"n_{k}": v.count("time") for k, v in layers.items()},
+                           "q_LST": (lst.astype("float64") ** 2).sum("time", skipna=True)}).compute()
+        for k in names:
+            tot[k] = tot[k] + part[f"s_{k}"]
+            cnt[k] = cnt[k] + part[f"n_{k}"]
+        sumsq = sumsq + part["q_LST"]
+        all_dates.extend(raw.time.values)
 
-    stack = xr.Dataset({
-        "LST":    lst.mean("time"),
-        "NDVI":   ((nir - red) / (nir + red)).mean("time"),
-        "NDBI":   ((sw1 - nir) / (sw1 + nir)).mean("time"),
-        "MNDWI":  ((green - sw1) / (green + sw1)).mean("time"),
-        "ALBEDO": (0.356 * blue + 0.130 * red + 0.373 * nir + 0.085 * sw1 + 0.072 * sw2 - 0.0018).mean("time"),
-        "LST_std": lst.std("time"),
-        "n_obs":  lst.notnull().sum("time"),
-    }).compute()
-    dates = pd.to_datetime(raw.time.values).normalize()
+    mean = {k: (tot[k] / cnt[k].where(cnt[k] > 0)).astype("float32") for k in names}
+    n = cnt["LST"].where(cnt["LST"] > 0)
+    lst_std = ((sumsq / n) - (tot["LST"] / n) ** 2).clip(min=0) ** 0.5
+    stack = xr.Dataset({**mean, "LST_std": lst_std.astype("float32"), "n_obs": cnt["LST"]})
+    dates = pd.to_datetime(pd.Series(all_dates)).dt.normalize().drop_duplicates().sort_values()
+    dates = pd.DatetimeIndex(dates)
     stack = stack.where(stack["n_obs"] >= min(5, len(items)))
     stack = stack.rio.write_crs(f"EPSG:{crs}")
     return stack, dates
@@ -269,11 +298,20 @@ def get_osm(bbox, stack):
 def get_weather(lon, lat, dates):
     """City-level conditions on the Landsat dates at ~10-11 h IST (overpass), from Open-Meteo's ERA5 archive."""
     d0, d1 = (dates.min() - pd.Timedelta(days=30)).date(), dates.max().date()
-    r = requests.get("https://archive-api.open-meteo.com/v1/archive", timeout=180, params={
-        "latitude": lat, "longitude": lon, "start_date": str(d0), "end_date": str(d1),
-        "hourly": "temperature_2m,relative_humidity_2m,wind_speed_10m,shortwave_radiation,precipitation",
-        "timezone": "Asia/Kolkata"})
-    r.raise_for_status()
+    params = {"latitude": lat, "longitude": lon, "start_date": str(d0), "end_date": str(d1),
+              "hourly": "temperature_2m,relative_humidity_2m,wind_speed_10m,shortwave_radiation,precipitation",
+              "timezone": "Asia/Kolkata"}
+    for attempt in range(5):                       # the free API times out / rate-limits now and then
+        try:
+            r = requests.get("https://archive-api.open-meteo.com/v1/archive", timeout=60, params=params)
+            r.raise_for_status()
+            break
+        except requests.RequestException as e:
+            if attempt == 4:
+                raise
+            wait = 10 * (attempt + 1)
+            print(f"  weather retry {attempt + 1}/4 in {wait}s ({type(e).__name__})")
+            time.sleep(wait)
     h = pd.DataFrame(r.json()["hourly"])
     h["time"] = pd.to_datetime(h["time"])
     h = h.set_index("time")
