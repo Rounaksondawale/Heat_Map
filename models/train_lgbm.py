@@ -1,0 +1,213 @@
+"""
+Model 01: LightGBM urban-heat model -> per-pixel heat prediction and hotspot maps.
+
+    python models/train_lgbm.py                       # clean 14-city table, leave-one-city-out CV
+    python models/train_lgbm.py --cv-sample 0.15      # faster CV (fewer training rows per fold)
+    python models/train_lgbm.py --data PATH --cv block   # spatial-block CV (used automatically with < 3 cities)
+
+Target   LST_anom = LST - mean LST of its city (deg C). Hotspots are defined city-relative (top 10 % of urban
+         pixels), and a city's baseline temperature is not something 14 cities can teach a model, so we predict
+         the within-city pattern. Water pixels (LANDCOVER 80) are dropped unless --keep-water.
+Features satellite indices, neighbourhood means, GHSL urban form, terrain, distances, weather, and a physics term
+         ABSORBED_SW = (1 - albedo) * shortwave. Target-derived columns (LST_z, SUHI, HOTSPOT, LST_std, n_obs),
+         coordinates and city ids are NOT used.
+Physics  monotonic constraints: more vegetation (NDVI, and its neighbourhood means) can never raise predicted LST.
+Validate leave-one-city-out: every city is predicted by a model that never saw it. Ridge is the baseline.
+Outputs  models/artifacts/   lgbm model, feature list, LOCO metrics, importances
+         models/outputs/     out-of-fold predictions table + observed-vs-predicted hotspot maps
+"""
+import argparse
+import json
+import time
+import warnings
+from pathlib import Path
+
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import lightgbm as lgb
+from scipy.stats import spearmanr
+from sklearn.linear_model import Ridge
+from sklearn.metrics import average_precision_score, r2_score, roc_auc_score
+from sklearn.model_selection import GroupKFold
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
+
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", message=".*eval_set.*")
+ROOT = Path(__file__).resolve().parents[1]
+ART, OUT = Path(__file__).parent / "artifacts", Path(__file__).parent / "outputs"
+
+MET = ["MET_T2M", "MET_RH", "MET_WIND", "MET_SW", "MET_RAIN7", "MET_RAIN30", "MET_T2M_SEASON_MAX"]
+BASE = ["NDVI", "NDBI", "MNDWI", "ALBEDO", "ELEV", "SLOPE_deg", "LANDCOVER",
+        "GHSL_HEIGHT", "GHSL_BUILT_FRAC", "GHSL_POP",
+        "NDVI_nbr150", "NDVI_nbr450", "BUILT_nbr150", "BUILT_nbr450", "HEIGHT_nbr150", "HEIGHT_nbr450",
+        "DIST_WATER_m", "DIST_GREEN_m"]
+MONO_DOWN = {"NDVI", "NDVI_nbr150", "NDVI_nbr450"}      # more green -> LST does not go up
+
+
+def load(path, keep_water, use_met):
+    df = pd.read_csv(path)
+    n0 = len(df)
+    if not keep_water:
+        df = df[df["LANDCOVER"] != 80]
+    df = df.dropna(subset=BASE).reset_index(drop=True)
+    print(f"loaded {n0:,} rows -> {len(df):,} after dropping water / NaN | {df['city'].nunique()} cities")
+    df["LST_anom"] = df["LST"] - df.groupby("city")["LST"].transform("mean")
+    df["ABSORBED_SW"] = (1 - df["ALBEDO"]) * df["MET_SW"]
+    feats = BASE + (MET + ["ABSORBED_SW"] if use_met else [])
+    lc = sorted(df["LANDCOVER"].astype(int).unique())
+    df["LANDCOVER"] = pd.Categorical(df["LANDCOVER"].astype(int), categories=lc)
+    return df, feats
+
+
+def lgb_params(args, feats):
+    return dict(objective="regression", n_estimators=args.trees, learning_rate=0.05, num_leaves=63,
+                min_child_samples=200, subsample=0.8, subsample_freq=1, colsample_bytree=0.8, reg_lambda=5.0,
+                monotone_constraints=[-1 if f in MONO_DOWN else 0 for f in feats] if not args.no_monotone else None,
+                n_jobs=-1, verbose=-1, random_state=0)
+
+
+def folds(df, cv):
+    if cv == "loco":
+        for c in sorted(df["city"].unique()):
+            yield c, (df["city"] == c).to_numpy(), df["city"].to_numpy()
+    else:
+        for i, (_, te) in enumerate(GroupKFold(5).split(df, groups=df["block_id"])):
+            m = np.zeros(len(df), bool)
+            m[te] = True
+            yield f"fold{i}", m, df["block_id"].to_numpy()
+
+
+def hotspot_scores(g, pred_col):
+    """Hotspots as defined in build_dataset: top 10 % of URBAN pixels in a city. Returns metrics for one city."""
+    u = g[g["IS_URBAN"] == 1]
+    out = {"urban_px": len(u)}
+    if u["HOTSPOT"].nunique() < 2:
+        return out
+    thr = u[pred_col].quantile(0.9)
+    flag = u[pred_col] >= thr
+    tp = int((flag & (u["HOTSPOT"] == 1)).sum())
+    prec, rec = tp / max(flag.sum(), 1), tp / max((u["HOTSPOT"] == 1).sum(), 1)
+    out.update(hot_auc=roc_auc_score(u["HOTSPOT"], u[pred_col]), hot_ap=average_precision_score(u["HOTSPOT"], u[pred_col]),
+               hot_prec=prec, hot_rec=rec, hot_f1=2 * prec * rec / max(prec + rec, 1e-9))
+    return out
+
+
+def city_metrics(df, pred_col):
+    rows = []
+    for c, g in df.groupby("city"):
+        rows.append({"city": c, "rows": len(g), "rmse": float(np.sqrt(((g["LST_anom"] - g[pred_col]) ** 2).mean())),
+                     "r2": r2_score(g["LST_anom"], g[pred_col]), "spearman": spearmanr(g["LST_anom"], g[pred_col])[0],
+                     **hotspot_scores(g, pred_col)})
+    return pd.DataFrame(rows).set_index("city")
+
+
+def maps(df, out_dir):
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for c, g in df.groupby("city"):
+        fig, ax = plt.subplots(1, 3, figsize=(17, 5.5), sharex=True, sharey=True)
+        lim = float(np.nanpercentile(np.abs(g["LST_anom"]), 99))
+        for a, col, title in ((ax[0], "LST_anom", "observed LST anomaly (C)"), (ax[1], "pred_lgbm", "predicted (held-out city)")):
+            s = a.scatter(g["x"], g["y"], c=g[col], s=1.2, marker="s", cmap="RdYlBu_r", vmin=-lim, vmax=lim, linewidths=0)
+            a.set_title(f"{c}: {title}")
+            plt.colorbar(s, ax=a, shrink=0.8)
+        u = g[g["IS_URBAN"] == 1]
+        thr = u["pred_lgbm"].quantile(0.9)
+        ax[2].scatter(g["x"], g["y"], c="#dddddd", s=1.2, marker="s", linewidths=0)
+        hit = u[(u["pred_lgbm"] >= thr) & (u["HOTSPOT"] == 1)]
+        miss = u[(u["pred_lgbm"] >= thr) & (u["HOTSPOT"] != 1)]
+        lost = u[(u["pred_lgbm"] < thr) & (u["HOTSPOT"] == 1)]
+        for d, col, lab in ((hit, "#d7191c", f"hotspot found ({len(hit):,})"), (miss, "#fdae61", f"false alarm ({len(miss):,})"),
+                            (lost, "#2c7bb6", f"hotspot missed ({len(lost):,})")):
+            ax[2].scatter(d["x"], d["y"], c=col, s=2, marker="s", linewidths=0, label=lab)
+        ax[2].legend(loc="lower left", fontsize=8, markerscale=4)
+        ax[2].set_title(f"{c}: predicted top-10 % urban vs true hotspots")
+        for a in ax:
+            a.set_aspect("equal")
+            a.set_xticks([]); a.set_yticks([])
+        fig.savefig(out_dir / f"{c}.png", dpi=110, bbox_inches="tight")
+        plt.close(fig)
+    print("maps ->", out_dir)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--data", default=str(ROOT / "data/multi_city/all_cities_clean.csv.gz"))
+    ap.add_argument("--cv", choices=["loco", "block"], default="loco")
+    ap.add_argument("--cv-sample", type=float, default=0.3, help="fraction of training rows used in each CV fold")
+    ap.add_argument("--trees", type=int, default=800, help="max trees (early stopping picks fewer)")
+    ap.add_argument("--no-monotone", action="store_true")
+    ap.add_argument("--no-met", action="store_true", help="drop the city-level weather features")
+    ap.add_argument("--keep-water", action="store_true")
+    ap.add_argument("--no-maps", action="store_true")
+    ap.add_argument("--tag", default="lgbm_lst_anom")
+    args = ap.parse_args()
+    ART.mkdir(exist_ok=True)
+    OUT.mkdir(exist_ok=True)
+
+    df, feats = load(args.data, args.keep_water, not args.no_met)
+    if args.cv == "loco" and df["city"].nunique() < 3:
+        print("fewer than 3 cities -> using spatial-block CV")
+        args.cv = "block"
+    params = lgb_params(args, feats)
+    rng = np.random.default_rng(0)
+    df["pred_lgbm"] = np.nan
+    df["pred_ridge"] = np.nan
+    best_iters = []
+    num = [f for f in feats if f != "LANDCOVER"]
+    t0 = time.time()
+
+    for name, test, unit in folds(df, args.cv):
+        tr_idx = np.flatnonzero(~test)
+        units = np.unique(unit[tr_idx])
+        val_units = rng.choice(units, max(1, round(0.1 * len(units))), replace=False)
+        is_val = np.isin(unit[tr_idx], val_units)
+        fit_idx, val_idx = tr_idx[~is_val], tr_idx[is_val]
+        fit_idx = rng.choice(fit_idx, int(len(fit_idx) * args.cv_sample), replace=False)
+        val_idx = rng.choice(val_idx, min(len(val_idx), 200_000), replace=False)
+
+        m = lgb.LGBMRegressor(**params)
+        m.fit(df.loc[fit_idx, feats], df.loc[fit_idx, "LST_anom"], eval_set=[(df.loc[val_idx, feats], df.loc[val_idx, "LST_anom"])],
+              callbacks=[lgb.early_stopping(50, verbose=False)])
+        df.loc[test, "pred_lgbm"] = m.predict(df.loc[test, feats])
+        best_iters.append(m.best_iteration_)
+        rdg = make_pipeline(StandardScaler(), Ridge(alpha=1.0)).fit(df.loc[fit_idx, num], df.loc[fit_idx, "LST_anom"])
+        df.loc[test, "pred_ridge"] = rdg.predict(df.loc[test, num])
+        r2 = r2_score(df.loc[test, "LST_anom"], df.loc[test, "pred_lgbm"])
+        print(f"  held out {name:12s} trees {m.best_iteration_:4d}  R2 {r2:5.2f}  ({time.time() - t0:5.0f}s)")
+
+    lg, rd = city_metrics(df, "pred_lgbm"), city_metrics(df, "pred_ridge")
+    summary = lg.join(rd[["rmse", "r2", "hot_auc", "hot_f1"]].add_prefix("ridge_"))
+    pd.set_option("display.width", 220)
+    print("\nPer held-out city (LightGBM vs Ridge baseline):")
+    print(summary.round(3).to_string())
+    print("\nMEAN over cities:  " + "  ".join(f"{c}={summary[c].mean():.3f}" for c in
+                                            ["rmse", "r2", "spearman", "hot_auc", "hot_f1", "ridge_r2", "ridge_hot_auc", "ridge_hot_f1"]))
+    summary.round(4).to_csv(ART / f"{args.tag}_cv_metrics.csv")
+
+    # ---- final model on everything
+    n_trees = max(50, int(np.mean(best_iters) * 1.1))
+    final = lgb.LGBMRegressor(**{**params, "n_estimators": n_trees}).fit(df[feats], df["LST_anom"])
+    final.booster_.save_model(str(ART / f"{args.tag}.txt"))
+    imp = pd.Series(final.booster_.feature_importance("gain"), feats).sort_values(ascending=False)
+    (imp / imp.sum()).round(4).to_csv(ART / f"{args.tag}_importance.csv", header=["gain_share"])
+    (ART / f"{args.tag}_config.json").write_text(json.dumps({
+        "features": feats, "target": "LST_anom = LST - city mean LST (C)", "n_trees": n_trees, "cv": args.cv,
+        "monotone_down": sorted(MONO_DOWN) if not args.no_monotone else [], "dropped_water": not args.keep_water,
+        "landcover_classes": list(df["LANDCOVER"].cat.categories), "params": {k: v for k, v in params.items() if k != "monotone_constraints"}},
+        indent=2, default=str))
+    print(f"\nfinal model: {n_trees} trees -> {ART / (args.tag + '.txt')}")
+    print("top drivers (share of gain):\n" + (imp / imp.sum()).round(3).head(10).to_string())
+
+    # ---- out-of-fold predictions (honest: every city predicted by a model that never saw it) + maps
+    cols = ["city", "x", "y", "lon", "lat", "LST", "LST_anom", "pred_lgbm", "IS_URBAN", "HOTSPOT", "block_id"]
+    df[cols].round(4).to_csv(OUT / f"{args.tag}_oof_predictions.csv.gz", index=False)
+    if not args.no_maps:
+        maps(df, OUT / f"{args.tag}_maps")
+
+
+if __name__ == "__main__":
+    main()
