@@ -11,6 +11,9 @@ Means ignore NaN pixels (water holes, cloud gaps, nodata) and are computed on th
 strided table, so the windows see every neighbouring pixel. The source file is not modified.
 """
 import argparse
+import multiprocessing as mp
+import os
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 import numpy as np
@@ -54,20 +57,29 @@ def main():
     ap.add_argument("--root", default="../data/multi_city", help="folder holding cities/<City>/aligned.nc")
     ap.add_argument("--src", default=None, help="default: <root>/all_cities_clean.csv.gz")
     ap.add_argument("--dst", default=None, help="default: <root>/all_cities_clean_ctx.csv.gz")
+    ap.add_argument("--workers", type=int, default=0, help="cities processed in parallel (default 0 = all CPU cores)")
     a = ap.parse_args()
     root = Path(a.root)
     src = Path(a.src) if a.src else root / "all_cities_clean.csv.gz"
     dst = Path(a.dst) if a.dst else root / "all_cities_clean_ctx.csv.gz"
 
     df = pd.read_csv(src)
-    parts = []
+    jobs = {}
     for city, g in df.groupby("city", sort=False):
         nc = root / "cities" / city / "aligned.nc"
         if not nc.exists():
             raise SystemExit(f"missing {nc}")
-        cols = city_features(nc, g["x"].to_numpy(), g["y"].to_numpy())
-        parts.append(pd.DataFrame(cols, index=g.index))
-        print(f"  {city:12s} {len(g):7,} rows  +{len(cols)} context features")
+        jobs[city] = (nc, g["x"].to_numpy(), g["y"].to_numpy(), g.index)
+    workers = max(1, min(a.workers or os.cpu_count() or 1, len(jobs)))
+    print(f"{len(jobs)} cities on {workers} worker process(es)")
+    parts = []
+    with ProcessPoolExecutor(workers, mp_context=mp.get_context("spawn")) as ex:
+        futs = {ex.submit(city_features, nc, xs, ys): (city, idx) for city, (nc, xs, ys, idx) in jobs.items()}
+        for f in as_completed(futs):
+            city, idx = futs[f]
+            cols = f.result()
+            parts.append(pd.DataFrame(cols, index=idx))
+            print(f"  {city:12s} {len(idx):7,} rows  +{len(cols)} context features")
     ctx = pd.concat(parts).loc[df.index]
     out = pd.concat([df, ctx], axis=1)
     out.to_csv(dst, index=False)
