@@ -18,6 +18,7 @@ Outputs  models/artifacts/   lgbm model, feature list, LOCO metrics, importances
 """
 import argparse
 import json
+import sys
 import time
 import warnings
 from pathlib import Path
@@ -145,6 +146,7 @@ def main():
     ap.add_argument("--no-maps", action="store_true")
     ap.add_argument("--tag", default="lgbm_lst_anom")
     args = ap.parse_args()
+    sys.stdout.reconfigure(line_buffering=True)      # show progress live under nohup / redirected logs
     ART.mkdir(exist_ok=True)
     OUT.mkdir(exist_ok=True)
 
