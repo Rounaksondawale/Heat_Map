@@ -18,6 +18,7 @@ Outputs  models/artifacts/   lgbm model, feature list, LOCO metrics, importances
 """
 import argparse
 import json
+import re
 import sys
 import time
 import warnings
@@ -36,6 +37,9 @@ from sklearn.model_selection import GroupKFold
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
+sys.path.insert(0, str(Path(__file__).parent))
+from hotspots import hotspot_flag  # noqa: E402
+
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", message=".*eval_set.*")
 ROOT = Path(__file__).resolve().parents[1]
@@ -51,7 +55,7 @@ NORM = ["NDVI", "NDBI", "MNDWI", "ALBEDO", "ELEV", "GHSL_HEIGHT", "GHSL_BUILT_FR
 MONO_DOWN = {"NDVI", "NDVI_nbr150", "NDVI_nbr450", "NDVI_cn", "NDVI_nbr150_cn", "NDVI_nbr450_cn"}      # more green -> LST does not go up
 
 
-def load(path, keep_water, use_met, target, city_norm):
+def load(path, keep_water, use_met, target, city_norm, context=False):
     df = pd.read_csv(path)
     n0 = len(df)
     if not keep_water:
@@ -67,6 +71,12 @@ def load(path, keep_water, use_met, target, city_norm):
         for f in NORM:
             df[f + "_cn"] = df[f] - df.groupby("city")[f].transform("mean")
         feats += [f + "_cn" for f in NORM]
+    if context:          # multi-scale surroundings from extraction/add_context_features.py
+        ctx = [c for c in df.columns if re.search(r"_(c\d+|sd\d+)$", c)]
+        if not ctx:
+            raise SystemExit("no context columns in the data: run extraction/add_context_features.py and pass --data <..._ctx.csv.gz>")
+        feats += ctx
+        print(f"context features: {len(ctx)}")
     lc = sorted(df["LANDCOVER"].astype(int).unique())
     df["LANDCOVER"] = pd.Categorical(df["LANDCOVER"].astype(int), categories=lc)
     return df, feats
@@ -75,7 +85,7 @@ def load(path, keep_water, use_met, target, city_norm):
 def lgb_params(args, feats):
     return dict(objective="regression", n_estimators=args.trees, learning_rate=0.05, num_leaves=63,
                 min_child_samples=200, subsample=0.8, subsample_freq=1, colsample_bytree=0.8, reg_lambda=5.0,
-                monotone_constraints=[-1 if f in MONO_DOWN else 0 for f in feats] if not args.no_monotone else None,
+                monotone_constraints=[-1 if (f in MONO_DOWN or re.fullmatch(r"NDVI_c\d+", f)) else 0 for f in feats] if not args.no_monotone else None,
                 n_jobs=-1, verbose=-1, random_state=0)
 
 
@@ -102,6 +112,11 @@ def hotspot_scores(g, pred_col):
     prec, rec = tp / max(flag.sum(), 1), tp / max((u["HOTSPOT"] == 1).sum(), 1)
     out.update(hot_auc=roc_auc_score(u["HOTSPOT"], u[pred_col]), hot_ap=average_precision_score(u["HOTSPOT"], u[pred_col]),
                hot_prec=prec, hot_rec=rec, hot_f1=2 * prec * rec / max(prec + rec, 1e-9))
+    # hotspot AREAS: smooth the prediction over neighbours and keep connected clusters only
+    fs = hotspot_flag(g, pred_col)[u.index]
+    tps = int((fs & (u["HOTSPOT"] == 1)).sum())
+    ps, rs = tps / max(fs.sum(), 1), tps / max((u["HOTSPOT"] == 1).sum(), 1)
+    out.update(hot_f1_area=2 * ps * rs / max(ps + rs, 1e-9))
     return out
 
 
@@ -110,6 +125,8 @@ def city_metrics(df, pred_col):
     for c, g in df.groupby("city"):
         rows.append({"city": c, "rows": len(g), "rmse": float(np.sqrt(((g["TARGET"] - g[pred_col]) ** 2).mean())),
                      "r2": r2_score(g["TARGET"], g[pred_col]), "spearman": spearmanr(g["TARGET"], g[pred_col])[0],
+                     # R2 after the best per-city linear rescale of the prediction: ranking quality without scale / offset errors
+                     "r2_rescaled": float(np.corrcoef(g["TARGET"], g[pred_col])[0, 1] ** 2),
                      **hotspot_scores(g, pred_col)})
     return pd.DataFrame(rows).set_index("city")
 
@@ -154,6 +171,7 @@ def main():
     ap.add_argument("--target", choices=["anom", "z"], default="anom",
                     help="anom: LST - city mean (C). z: that divided by the city's LST std (same scale for every city)")
     ap.add_argument("--city-norm", action="store_true", help="add features minus their city mean (*_cn)")
+    ap.add_argument("--context", action="store_true", help="use multi-scale surroundings features (_c90.._c2010, _sd*) from the *_ctx table")
     ap.add_argument("--no-maps", action="store_true")
     ap.add_argument("--tag", default="lgbm_lst_anom")
     args = ap.parse_args()
@@ -161,7 +179,7 @@ def main():
     ART.mkdir(exist_ok=True)
     OUT.mkdir(exist_ok=True)
 
-    df, feats = load(args.data, args.keep_water, not args.no_met, args.target, args.city_norm)
+    df, feats = load(args.data, args.keep_water, not args.no_met, args.target, args.city_norm, args.context)
     if args.cv == "loco" and df["city"].nunique() < 3:
         print("fewer than 3 cities -> using spatial-block CV")
         args.cv = "block"
@@ -198,7 +216,7 @@ def main():
     print("\nPer held-out city (LightGBM vs Ridge baseline):")
     print(summary.round(3).to_string())
     print("\nMEAN over cities:  " + "  ".join(f"{c}={summary[c].mean():.3f}" for c in
-                                            ["rmse", "r2", "spearman", "hot_auc", "hot_f1", "ridge_r2", "ridge_hot_auc", "ridge_hot_f1"]))
+                                            ["rmse", "r2", "r2_rescaled", "spearman", "hot_auc", "hot_f1", "hot_f1_area", "ridge_r2", "ridge_hot_auc", "ridge_hot_f1"]))
     summary.round(4).to_csv(ART / f"{args.tag}_cv_metrics.csv")
 
     # ---- final model on everything
@@ -208,7 +226,7 @@ def main():
     imp = pd.Series(final.booster_.feature_importance("gain"), feats).sort_values(ascending=False)
     (imp / imp.sum()).round(4).to_csv(ART / f"{args.tag}_importance.csv", header=["gain_share"])
     (ART / f"{args.tag}_config.json").write_text(json.dumps({
-        "features": feats, "target": "LST - city mean LST (C)" if args.target == "anom" else "(LST - city mean) / city std", "city_norm": args.city_norm, "n_trees": n_trees, "cv": args.cv,
+        "features": feats, "target": "LST - city mean LST (C)" if args.target == "anom" else "(LST - city mean) / city std", "city_norm": args.city_norm, "context": args.context, "n_trees": n_trees, "cv": args.cv,
         "monotone_down": sorted(MONO_DOWN) if not args.no_monotone else [], "dropped_water": not args.keep_water,
         "landcover_classes": list(df["LANDCOVER"].cat.categories), "params": {k: v for k, v in params.items() if k != "monotone_constraints"}},
         indent=2, default=str))

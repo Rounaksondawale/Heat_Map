@@ -36,6 +36,7 @@ def main():
     ap.add_argument("--trees", type=int, default=1500)
     ap.add_argument("--no-monotone", action="store_true")
     ap.add_argument("--keep-water", action="store_true")
+    ap.add_argument("--context", action="store_true", help="use multi-scale surroundings features from the *_ctx table")
     ap.add_argument("--no-maps", action="store_true")
     args = ap.parse_args()
     sys.stdout.reconfigure(line_buffering=True)
@@ -43,7 +44,7 @@ def main():
     tl.OUT.mkdir(exist_ok=True)
 
     # weather is a single value per city -> useless inside one city, so it is left out
-    df, feats = tl.load(args.data, args.keep_water, use_met=False, target="anom", city_norm=False)
+    df, feats = tl.load(args.data, args.keep_water, use_met=False, target="anom", city_norm=False, context=args.context)
     args.trees_cap = args.trees
     params = tl.lgb_params(argparse.Namespace(trees=args.trees, no_monotone=args.no_monotone), feats)
     cities = args.cities or sorted(df["city"].unique())
@@ -80,7 +81,7 @@ def main():
     pd.set_option("display.width", 200)
     print("\nPer-city models, scored on held-out spatial blocks:")
     print(met.round(3).to_string())
-    print("\nMEAN over cities:  " + "  ".join(f"{k}={met[k].mean():.3f}" for k in ["rmse", "r2", "spearman", "hot_auc", "hot_f1"]))
+    print("\nMEAN over cities:  " + "  ".join(f"{k}={met[k].mean():.3f}" for k in ["rmse", "r2", "r2_rescaled", "spearman", "hot_auc", "hot_f1", "hot_f1_area"]))
     print("(leave-one-city-out baseline was:  rmse=2.002  r2=0.396  spearman=0.769  hot_auc=0.821  hot_f1=0.400)")
     met.round(4).to_csv(tl.ART / "per_city_cv_metrics.csv")
     (tl.ART / "per_city" / "config.json").write_text(json.dumps({"features": feats, "cities": config}, indent=2))
