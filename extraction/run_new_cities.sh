@@ -14,6 +14,13 @@
 set -e
 cd "$(dirname "$0")/.."
 
+# Use conda's newer C++ runtime; the system libstdc++ is too old for the geo packages (CXXABI_1.3.15 error).
+export LD_LIBRARY_PATH="${CONDA_PREFIX:-/anaconda/envs/azureml_py38}/lib:${LD_LIBRARY_PATH:-}"
+[ -d /anaconda/envs/azureml_py38/lib ] && export LD_LIBRARY_PATH="/anaconda/envs/azureml_py38/lib:${LD_LIBRARY_PATH}"
+
+# Abort here, with a clear message, if the build packages cannot be imported (instead of failing every city).
+python -c "import rioxarray, rasterio, odc.stac, planetary_computer, pystac_client, geopandas"   || { echo "ERROR: build packages do not import; fix the environment first (see the error above)"; exit 1; }
+
 OUT=data/multi_city
 DEFAULT_NEW="Shimla Dehradun Ranchi Shillong Visakhapatnam Surat Kochi Thiruvananthapuram Mangaluru Jodhpur Indore Bhopal Amritsar Ludhiana Patna Raipur Coimbatore Vadodara Kanpur Srinagar Jammu Agartala Imphal Puducherry Panaji Madurai Bikaner Ajmer Udaipur Rajkot Nashik Aurangabad Agra Varanasi Jabalpur Gwalior"
 NEW="${*:-$DEFAULT_NEW}"          # pass city names as arguments to build only those (a smaller batch)
