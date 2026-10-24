@@ -60,6 +60,26 @@ CITIES = {
     "Bhubaneswar": (85.824, 20.296, "tropical savanna",   15),
     "Guwahati":    (91.736, 26.145, "humid subtropical",  25),
     "Chandigarh":  (76.779, 30.733, "humid subtropical",  10),
+    # ---- added to widen climate / terrain coverage for the combined model
+    "Shimla":            (77.171, 31.105, "humid subtropical (hill)", 20),
+    "Dehradun":          (78.032, 30.316, "humid subtropical",        15),
+    "Ranchi":            (85.309, 23.344, "humid subtropical",        15),
+    "Shillong":          (91.883, 25.578, "humid subtropical (hill)", 30),
+    "Visakhapatnam":     (83.218, 17.687, "tropical coastal",         15),
+    "Surat":             (72.831, 21.170, "tropical coastal",         15),
+    "Kochi":             (76.267,  9.931, "tropical coastal",         25),
+    "Thiruvananthapuram": (76.953, 8.524, "tropical coastal",         25),
+    "Mangaluru":         (74.856, 12.914, "tropical coastal",         20),
+    "Jodhpur":           (73.024, 26.238, "arid",                     10),
+    "Indore":            (75.857, 22.719, "semi-arid",                10),
+    "Bhopal":            (77.413, 23.259, "semi-arid",                10),
+    "Amritsar":          (74.873, 31.634, "semi-arid/subtrop",        10),
+    "Ludhiana":          (75.857, 30.901, "semi-arid/subtrop",        10),
+    "Patna":             (85.144, 25.594, "humid subtropical",        15),
+    "Raipur":            (81.630, 21.251, "tropical savanna",         15),
+    "Coimbatore":        (76.956, 11.017, "tropical savanna",         20),
+    "Vadodara":          (73.181, 22.307, "semi-arid",                10),
+    "Kanpur":            (80.332, 26.449, "humid subtropical",        10),
 }
 
 PC_STAC = "https://planetarycomputer.microsoft.com/api/stac/v1"

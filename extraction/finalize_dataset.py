@@ -46,8 +46,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--src", default="../data/multi_city/all_cities_training.csv.gz")
     ap.add_argument("--dst", default=None)
-    ap.add_argument("--drop-nan-city", nargs="*", default=["Mumbai", "Delhi"],
-                    help="Mumbai: GHSL NaN; Delhi: ~600 DEM-gap pixels (ELEV / SLOPE_deg)")
+    ap.add_argument("--drop-nan-city", nargs="*", default=["all"],
+                    help="cities whose NaN rows are dropped; default all (a city losing more than half its rows FAILS validation)")
     ap.add_argument("--keep-bad-indices", action="store_true",
                     help="do not drop rows whose NDVI / NDBI / MNDWI / ELEV are outside the physical range")
     ap.add_argument("--allow-missing-cities", action="store_true", help="for partial / test runs")
@@ -60,7 +60,9 @@ def main():
 
     # ------------------------------------------------ 1. drop NaN rows in the named cities
     feat = [c for c in df.columns if c not in META_COLS]
-    for city in a.drop_nan_city:
+    n_before = df["city"].value_counts()
+    clean_cities = sorted(df["city"].unique()) if "all" in a.drop_nan_city else a.drop_nan_city
+    for city in clean_cities:
         m = df["city"] == city
         if not m.any():
             continue
@@ -92,11 +94,14 @@ def main():
             df = df[~bad].reset_index(drop=True)
 
     # ------------------------------------------------ 2. validation
+    lost = 1 - df["city"].value_counts().reindex(n_before.index).fillna(0) / n_before
+    heavy = lost[lost > 0.5]
+    check("PASS" if heavy.empty else "FAIL", "no city lost more than half its rows in cleaning", str(heavy.round(2).to_dict()) if len(heavy) else f"max loss {lost.max():.0%} ({lost.idxmax()})")
     # cities
     present = set(df["city"].unique())
     missing = [c for c in bd.CITIES if c not in present]
     extra = sorted(present - set(bd.CITIES))
-    check("PASS" if not missing else ("WARN" if a.allow_missing_cities else "FAIL"), "all 14 cities present",
+    check("PASS" if not missing else ("WARN" if a.allow_missing_cities else "FAIL"), f"all {len(bd.CITIES)} cities present",
           f"missing {missing}" if missing else f"{len(present)} cities")
     if extra:
         check("FAIL", "unexpected cities", str(extra))
