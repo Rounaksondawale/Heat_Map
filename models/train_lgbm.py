@@ -230,6 +230,12 @@ def main():
     n_trees = max(50, int(np.mean(best_iters) * 1.1))
     final = lgb.LGBMRegressor(**{**params, "n_estimators": n_trees}).fit(df[feats], df["TARGET"])
     final.booster_.save_model(str(ART / f"{args.tag}.txt"))
+    import joblib      # the Ridge half of the LightGBM + Ridge blend, saved so predict_city.py can use both
+    ridge = make_pipeline(StandardScaler(), Ridge(alpha=1.0)).fit(df[num], df["TARGET"])
+    joblib.dump(ridge, ART / f"{args.tag}_ridge.joblib")
+    rng_q = df[num].quantile([0.01, 0.99])             # what the model has seen, for the new-city trust check
+    (ART / f"{args.tag}_ranges.json").write_text(json.dumps(
+        {"ridge_features": num, "lo": rng_q.loc[0.01].to_dict(), "hi": rng_q.loc[0.99].to_dict()}, indent=2))
     imp = pd.Series(final.booster_.feature_importance("gain"), feats).sort_values(ascending=False)
     (imp / imp.sum()).round(4).to_csv(ART / f"{args.tag}_importance.csv", header=["gain_share"])
     (ART / f"{args.tag}_config.json").write_text(json.dumps({
