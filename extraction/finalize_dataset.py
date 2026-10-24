@@ -190,7 +190,8 @@ def main():
     df.to_parquet(dst.with_name(dst.name.replace(".csv.gz", ".parquet")), index=False)
     if not a.no_csv:
         df.to_csv(dst, index=False)
-    print(f"\nREADY FOR MODELING -> {dst}")
+    pq = dst.with_name(dst.name.replace(".csv.gz", ".parquet"))
+    print(f"\nREADY FOR MODELING -> {pq}" + ("" if a.no_csv else f" and {dst}"))
 
 
 if __name__ == "__main__":
