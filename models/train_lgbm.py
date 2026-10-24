@@ -17,11 +17,15 @@ Outputs  models/artifacts/   lgbm model, feature list, LOCO metrics, importances
          models/outputs/     out-of-fold predictions table + observed-vs-predicted hotspot maps
 """
 import argparse
+import contextlib
 import json
+import multiprocessing as mp
+import os
 import re
 import sys
 import time
 import warnings
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 import matplotlib
@@ -55,8 +59,20 @@ NORM = ["NDVI", "NDBI", "MNDWI", "ALBEDO", "ELEV", "GHSL_HEIGHT", "GHSL_BUILT_FR
 MONO_DOWN = {"NDVI", "NDVI_nbr150", "NDVI_nbr450", "NDVI_cn", "NDVI_nbr150_cn", "NDVI_nbr450_cn"}      # more green -> LST does not go up
 
 
+def read_table(path):
+    """Read a training table fast: .parquet directly, or a CSV with the multi-threaded pyarrow reader."""
+    path = str(path)
+    pq = path.replace(".csv.gz", ".parquet")
+    if path.endswith(".parquet") or (path.endswith(".csv.gz") and os.path.exists(pq)):
+        return pd.read_parquet(pq if not path.endswith(".parquet") else path)
+    try:
+        return pd.read_csv(path, engine="pyarrow")
+    except Exception:  # noqa: BLE001  (older pandas / pyarrow missing)
+        return pd.read_csv(path)
+
+
 def load(path, keep_water, use_met, target, city_norm, context=False):
-    df = pd.read_csv(path)
+    df = read_table(path)
     n0 = len(df)
     if not keep_water:
         df = df[df["LANDCOVER"] != 80]
@@ -162,6 +178,33 @@ def maps(df, out_dir, label="held-out city"):
     print("maps ->", out_dir)
 
 
+_W = {}      # per-process copy of the data used by the fold workers
+
+
+def _init_worker(path, feats, num, params):
+    _W.update(df=pd.read_parquet(path), feats=feats, num=num, params=params)
+
+
+def _fit_fold(task):
+    """Fit LightGBM + Ridge for one held-out fold. Runs in a worker process (or in the main one if workers == 1)."""
+    name, test, fit_idx, val_idx, threads = task
+    d, feats, num = _W["df"], _W["feats"], _W["num"]
+    params = {**_W["params"], "n_jobs": threads}
+    try:
+        from threadpoolctl import threadpool_limits
+        limit = threadpool_limits(limits=threads) if threads > 0 else contextlib.nullcontext()
+    except Exception:  # noqa: BLE001
+        limit = contextlib.nullcontext()
+    with limit:
+        m = lgb.LGBMRegressor(**params)
+        m.fit(d.loc[fit_idx, feats], d.loc[fit_idx, "TARGET"], eval_set=[(d.loc[val_idx, feats], d.loc[val_idx, "TARGET"])],
+              callbacks=[lgb.early_stopping(50, verbose=False)])
+        p_l = m.predict(d.loc[test, feats])
+        rdg = make_pipeline(StandardScaler(), Ridge(alpha=1.0)).fit(d.loc[fit_idx, num], d.loc[fit_idx, "TARGET"])
+        p_r = rdg.predict(d.loc[test, num])
+    return name, test, p_l, p_r, m.best_iteration_, r2_score(d.loc[test, "TARGET"], p_l)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", default=str(ROOT / "data/multi_city/all_cities_clean.csv.gz"))
@@ -178,6 +221,8 @@ def main():
     ap.add_argument("--city-norm", action="store_true", help="add features minus their city mean (*_cn)")
     ap.add_argument("--context", action="store_true", help="use multi-scale surroundings features (_c90.._c2010, _sd*) from the *_ctx table")
     ap.add_argument("--no-maps", action="store_true")
+    ap.add_argument("--workers", type=int, default=0,
+                    help="CV folds trained in parallel (default 0 = auto: min(#folds, #cores) for big tables). Each gets cores/workers threads")
     ap.add_argument("--tag", default="lgbm_lst_anom")
     args = ap.parse_args()
     sys.stdout.reconfigure(line_buffering=True)      # show progress live under nohup / redirected logs
@@ -197,7 +242,15 @@ def main():
     num = [f for f in feats if f != "LANDCOVER"]
     t0 = time.time()
 
-    for name, test, unit in folds(df, args.cv):
+    cores = os.cpu_count() or 1
+    fold_list = list(folds(df, args.cv))
+    workers = args.workers or (min(len(fold_list), cores) if len(df) > 200_000 else 1)
+    workers = max(1, min(workers, len(fold_list), cores))
+    threads = max(1, cores // workers) if workers > 1 else -1
+    print(f"{cores} cores -> {workers} fold(s) in parallel x {'all' if threads < 0 else threads} thread(s) each")
+
+    tasks = []                                         # sampling is done up front, in one fixed order -> same result for any #workers
+    for name, test, unit in fold_list:
         tr_idx = np.flatnonzero(~test)
         units = np.unique(unit[tr_idx])
         val_units = rng.choice(units, max(1, round(0.1 * len(units))), replace=False)
@@ -205,16 +258,30 @@ def main():
         fit_idx, val_idx = tr_idx[~is_val], tr_idx[is_val]
         fit_idx = rng.choice(fit_idx, int(len(fit_idx) * args.cv_sample), replace=False)
         val_idx = rng.choice(val_idx, min(len(val_idx), 200_000), replace=False)
+        tasks.append((name, np.flatnonzero(test), fit_idx, val_idx, threads))
 
-        m = lgb.LGBMRegressor(**params)
-        m.fit(df.loc[fit_idx, feats], df.loc[fit_idx, "TARGET"], eval_set=[(df.loc[val_idx, feats], df.loc[val_idx, "TARGET"])],
-              callbacks=[lgb.early_stopping(50, verbose=False)])
-        df.loc[test, "pred_lgbm"] = m.predict(df.loc[test, feats])
-        best_iters.append(m.best_iteration_)
-        rdg = make_pipeline(StandardScaler(), Ridge(alpha=1.0)).fit(df.loc[fit_idx, num], df.loc[fit_idx, "TARGET"])
-        df.loc[test, "pred_ridge"] = rdg.predict(df.loc[test, num])
-        r2 = r2_score(df.loc[test, "TARGET"], df.loc[test, "pred_lgbm"])
-        print(f"  held out {name:12s} trees {m.best_iteration_:4d}  R2 {r2:5.2f}  ({time.time() - t0:5.0f}s)")
+    def collect(res):
+        name, test, p_l, p_r, best_it, r2 = res
+        df.loc[test, "pred_lgbm"] = p_l
+        df.loc[test, "pred_ridge"] = p_r
+        best_iters.append(best_it)
+        print(f"  held out {name:12s} trees {best_it:4d}  R2 {r2:5.2f}  ({time.time() - t0:5.0f}s)")
+
+    if workers == 1:
+        _W.update(df=df, feats=feats, num=num, params=params)
+        for t in tasks:
+            collect(_fit_fold(t))
+    else:
+        tmp = ART / f".tmp_{args.tag}.parquet"
+        df[feats + ["TARGET"]].to_parquet(tmp)         # workers read this once instead of receiving a pickled copy per task
+        try:
+            with ProcessPoolExecutor(workers, mp_context=mp.get_context("spawn"), initializer=_init_worker,
+                                     initargs=(str(tmp), feats, num, params)) as ex:
+                for f in as_completed([ex.submit(_fit_fold, t) for t in tasks]):
+                    collect(f.result())
+        finally:
+            tmp.unlink(missing_ok=True)
+    best_iters.sort()                                  # completion order varies; the mean does not
 
     df["pred_blend"] = (df["pred_lgbm"] + df["pred_ridge"]) / 2          # simple average of the two models
     lg, rd, bl = city_metrics(df, "pred_lgbm"), city_metrics(df, "pred_ridge"), city_metrics(df, "pred_blend")

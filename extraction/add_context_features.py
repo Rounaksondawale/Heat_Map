@@ -58,12 +58,20 @@ def main():
     ap.add_argument("--src", default=None, help="default: <root>/all_cities_clean.csv.gz")
     ap.add_argument("--dst", default=None, help="default: <root>/all_cities_clean_ctx.csv.gz")
     ap.add_argument("--workers", type=int, default=0, help="cities processed in parallel (default 0 = all CPU cores)")
+    ap.add_argument("--no-csv", action="store_true", help="write only the (much faster) parquet file, not the CSV")
     a = ap.parse_args()
     root = Path(a.root)
     src = Path(a.src) if a.src else root / "all_cities_clean.csv.gz"
+    src_pq = src.with_name(src.name.replace(".csv.gz", ".parquet"))
     dst = Path(a.dst) if a.dst else root / "all_cities_clean_ctx.csv.gz"
 
-    df = pd.read_csv(src)
+    if src_pq.exists():
+        df = pd.read_parquet(src_pq)
+    else:
+        try:
+            df = pd.read_csv(src, engine="pyarrow")
+        except Exception:  # noqa: BLE001
+            df = pd.read_csv(src)
     jobs = {}
     for city, g in df.groupby("city", sort=False):
         nc = root / "cities" / city / "aligned.nc"
@@ -82,7 +90,9 @@ def main():
             print(f"  {city:12s} {len(idx):7,} rows  +{len(cols)} context features")
     ctx = pd.concat(parts).loc[df.index]
     out = pd.concat([df, ctx], axis=1)
-    out.to_csv(dst, index=False)
+    out.to_parquet(dst.with_name(dst.name.replace(".csv.gz", ".parquet")), index=False)
+    if not a.no_csv:
+        out.to_csv(dst, index=False)
     print(f"\n{out.shape[0]:,} rows x {out.shape[1]} cols -> {dst}  (NaN in context: {int(ctx.isna().sum().sum()):,})")
 
 

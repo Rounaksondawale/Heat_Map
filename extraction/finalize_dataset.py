@@ -51,11 +51,15 @@ def main():
     ap.add_argument("--keep-bad-indices", action="store_true",
                     help="do not drop rows whose NDVI / NDBI / MNDWI / ELEV are outside the physical range")
     ap.add_argument("--allow-missing-cities", action="store_true", help="for partial / test runs")
+    ap.add_argument("--no-csv", action="store_true", help="write only the (much faster) parquet file, not the CSV")
     a = ap.parse_args()
     src = Path(a.src)
     dst = Path(a.dst) if a.dst else src.with_name("all_cities_clean.csv.gz")
 
-    df = pd.read_csv(src)
+    try:
+        df = pd.read_csv(src, engine="pyarrow")          # multi-threaded reader
+    except Exception:  # noqa: BLE001
+        df = pd.read_csv(src)
     print(f"loaded {len(df):,} rows x {df.shape[1]} cols from {src}\n")
 
     # ------------------------------------------------ 1. drop NaN rows in the named cities
@@ -183,7 +187,9 @@ def main():
     if counts["FAIL"]:
         print("\nNOT READY FOR MODELING: fix the FAIL items above (nothing was written).")
         sys.exit(1)
-    df.to_csv(dst, index=False)
+    df.to_parquet(dst.with_name(dst.name.replace(".csv.gz", ".parquet")), index=False)
+    if not a.no_csv:
+        df.to_csv(dst, index=False)
     print(f"\nREADY FOR MODELING -> {dst}")
 
 

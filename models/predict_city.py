@@ -71,7 +71,7 @@ def main():
     booster = lgb.Booster(model_file=str(tl.ART / f"{a.tag}.txt"))
     ridge = joblib.load(tl.ART / f"{a.tag}_ridge.joblib")
 
-    df = pd.read_csv(a.table)
+    df = tl.read_table(a.table)
     df = df[df["city"] == a.city]
     if df.empty:
         raise SystemExit(f"no rows for city {a.city} in {a.table}")
