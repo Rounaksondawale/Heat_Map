@@ -80,6 +80,24 @@ CITIES = {
     "Coimbatore":        (76.956, 11.017, "tropical savanna",         20),
     "Vadodara":          (73.181, 22.307, "semi-arid",                10),
     "Kanpur":            (80.332, 26.449, "humid subtropical",        10),
+    # ---- batch 3: reaches 50 cities
+    "Srinagar":          (74.797, 34.083, "temperate (hill)",         20),
+    "Jammu":             (74.857, 32.726, "humid subtropical",        10),
+    "Agartala":          (91.280, 23.831, "humid subtropical",        25),
+    "Imphal":            (93.937, 24.817, "humid subtropical (hill)", 25),
+    "Puducherry":        (79.808, 11.934, "tropical coastal",         20),
+    "Panaji":            (73.827, 15.499, "tropical coastal",         25),
+    "Madurai":           (78.119,  9.925, "tropical savanna",         15),
+    "Bikaner":           (73.311, 28.022, "arid",                     10),
+    "Ajmer":             (74.640, 26.450, "semi-arid",                10),
+    "Udaipur":           (73.712, 24.585, "semi-arid",                10),
+    "Rajkot":            (70.802, 22.304, "semi-arid",                10),
+    "Nashik":            (73.789, 19.998, "semi-arid",                10),
+    "Aurangabad":        (75.343, 19.877, "semi-arid",                10),
+    "Agra":              (78.008, 27.177, "semi-arid/subtrop",        10),
+    "Varanasi":          (82.973, 25.317, "humid subtropical",        10),
+    "Jabalpur":          (79.986, 23.181, "humid subtropical",        10),
+    "Gwalior":           (78.182, 26.218, "semi-arid/subtrop",        10),
 }
 
 PC_STAC = "https://planetarycomputer.microsoft.com/api/stac/v1"

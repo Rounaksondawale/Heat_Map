@@ -1,5 +1,5 @@
 #!/bin/bash
-# One command: build the 19 new cities, fill gaps, clean, add context features, train the combined model.
+# One command: build the 36 new cities (to reach 50), fill gaps, clean, add context features, train the combined model.
 #
 #   nohup bash extraction/run_new_cities.sh > pipeline.log 2>&1 &
 #   grep "===" pipeline.log          # progress
@@ -15,7 +15,8 @@ set -e
 cd "$(dirname "$0")/.."
 
 OUT=data/multi_city
-NEW="Shimla Dehradun Ranchi Shillong Visakhapatnam Surat Kochi Thiruvananthapuram Mangaluru Jodhpur Indore Bhopal Amritsar Ludhiana Patna Raipur Coimbatore Vadodara Kanpur"
+DEFAULT_NEW="Shimla Dehradun Ranchi Shillong Visakhapatnam Surat Kochi Thiruvananthapuram Mangaluru Jodhpur Indore Bhopal Amritsar Ludhiana Patna Raipur Coimbatore Vadodara Kanpur Srinagar Jammu Agartala Imphal Puducherry Panaji Madurai Bikaner Ajmer Udaipur Rajkot Nashik Aurangabad Agra Varanasi Jabalpur Gwalior"
+NEW="${*:-$DEFAULT_NEW}"          # pass city names as arguments to build only those (a smaller batch)
 
 CORES=$(nproc)
 MEM_GB=$(free -g | awk '/^Mem:/ {print $7}')               # available RAM
