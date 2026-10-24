@@ -20,14 +20,16 @@ NEW="${*:-$DEFAULT_NEW}"          # pass city names as arguments to build only t
 
 CORES=$(nproc)
 MEM_GB=$(free -g | awk '/^Mem:/ {print $7}')               # available RAM
-WORKERS=$(( CORES * 3 / 2 ))                                # I/O-bound: oversubscribe the cores a little
-MAX_BY_RAM=$(( MEM_GB / 5 ))
+# Step 1 is network-bound: cities wait on downloads, so run well more of them than there are cores and give each
+# 2 threads for concurrent reads. Cap by RAM (about 4 GB per city). Override:  WORKERS=8 bash extraction/run_new_cities.sh
+WORKERS=${WORKERS:-$(( CORES * 2 ))}
+MAX_BY_RAM=$(( MEM_GB / 4 ))
 [ "$WORKERS" -gt "$MAX_BY_RAM" ] && WORKERS=$MAX_BY_RAM
 [ "$WORKERS" -lt 2 ] && WORKERS=2
 echo "cores=$CORES  free RAM=${MEM_GB}GB  -> building $WORKERS cities at a time"
 
 echo "=== 1/5 build new cities (Landsat, DEM, GHSL, weather)  $(date)"
-python -u extraction/build_dataset.py --cities $NEW --out $OUT --workers $WORKERS || echo "some cities failed; continuing with the rest"
+python -u extraction/build_dataset.py --cities $NEW --out $OUT --workers $WORKERS --dask-threads 2 || echo "some cities failed; continuing with the rest"
 
 echo "=== 2/5 fill weather / layer gaps in the new cities  $(date)"
 python -u extraction/repair_dataset.py --out $OUT --cities $NEW --pause 8 || echo "repair reported leftovers; see above"

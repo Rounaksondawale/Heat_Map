@@ -515,6 +515,8 @@ def main():
     ap.add_argument("--osm", action="store_true", help="add OSM buildings/water/green (slow for big cities)")
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--out", default="data_multi")
+    ap.add_argument("--dask-threads", type=int, default=0,
+                    help="threads per city (default 0 = cores // workers). Reads are network-bound, so 2-3 keeps cores busy")
     ap.add_argument("--workers", type=int, default=1,
                     help="cities built in parallel (one process each). Try cores-1; each needs a few GB of RAM")
     args = ap.parse_args()
@@ -525,7 +527,7 @@ def main():
         raise SystemExit(f"unknown cities {bad}; choose from {list(CITIES)}")
     out_root = Path(args.out)
     workers = max(1, min(args.workers, len(names)))
-    threads = max(1, (os.cpu_count() or 1) // workers)
+    threads = args.dask_threads or max(1, (os.cpu_count() or 1) // workers)
     print(f"{len(names)} cities | {workers} parallel worker(s) | {threads} dask thread(s) each")
     failed = []
     if workers == 1:
