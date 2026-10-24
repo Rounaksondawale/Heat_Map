@@ -83,8 +83,11 @@ def load(path, keep_water, use_met, target, city_norm, context=False):
 
 
 def lgb_params(args, feats):
-    return dict(objective="regression", n_estimators=args.trees, learning_rate=0.05, num_leaves=63,
-                min_child_samples=200, subsample=0.8, subsample_freq=1, colsample_bytree=0.8, reg_lambda=5.0,
+    simple = getattr(args, "simple", False)
+    return dict(objective="regression", n_estimators=args.trees, learning_rate=0.03 if simple else 0.05,
+                num_leaves=15 if simple else 63, max_depth=5 if simple else -1,
+                min_child_samples=3000 if simple else 200, subsample=0.8, subsample_freq=1,
+                colsample_bytree=0.6 if simple else 0.8, reg_lambda=50.0 if simple else 5.0,
                 monotone_constraints=[-1 if (f in MONO_DOWN or re.fullmatch(r"NDVI_c\d+", f)) else 0 for f in feats] if not args.no_monotone else None,
                 n_jobs=-1, verbose=-1, random_state=0)
 
@@ -167,6 +170,8 @@ def main():
     ap.add_argument("--trees", type=int, default=800, help="max trees (early stopping picks fewer)")
     ap.add_argument("--no-monotone", action="store_true")
     ap.add_argument("--no-met", action="store_true", help="drop the city-level weather features")
+    ap.add_argument("--drop-feats", nargs="*", default=[], help="features to leave out, e.g. ELEV LANDCOVER (city-specific offsets do not transfer)")
+    ap.add_argument("--simple", action="store_true", help="shallower, more heavily regularised trees (better transfer to unseen cities)")
     ap.add_argument("--keep-water", action="store_true")
     ap.add_argument("--target", choices=["anom", "z"], default="anom",
                     help="anom: LST - city mean (C). z: that divided by the city's LST std (same scale for every city)")
@@ -180,6 +185,7 @@ def main():
     OUT.mkdir(exist_ok=True)
 
     df, feats = load(args.data, args.keep_water, not args.no_met, args.target, args.city_norm, args.context)
+    feats = [f for f in feats if f not in args.drop_feats]
     if args.cv == "loco" and df["city"].nunique() < 3:
         print("fewer than 3 cities -> using spatial-block CV")
         args.cv = "block"
@@ -210,13 +216,14 @@ def main():
         r2 = r2_score(df.loc[test, "TARGET"], df.loc[test, "pred_lgbm"])
         print(f"  held out {name:12s} trees {m.best_iteration_:4d}  R2 {r2:5.2f}  ({time.time() - t0:5.0f}s)")
 
-    lg, rd = city_metrics(df, "pred_lgbm"), city_metrics(df, "pred_ridge")
-    summary = lg.join(rd[["rmse", "r2", "hot_auc", "hot_f1"]].add_prefix("ridge_"))
+    df["pred_blend"] = (df["pred_lgbm"] + df["pred_ridge"]) / 2          # simple average of the two models
+    lg, rd, bl = city_metrics(df, "pred_lgbm"), city_metrics(df, "pred_ridge"), city_metrics(df, "pred_blend")
+    summary = lg.join(rd[["rmse", "r2", "hot_auc", "hot_f1"]].add_prefix("ridge_")).join(bl[["r2", "hot_auc", "hot_f1"]].add_prefix("blend_"))
     pd.set_option("display.width", 220)
     print("\nPer held-out city (LightGBM vs Ridge baseline):")
     print(summary.round(3).to_string())
     print("\nMEAN over cities:  " + "  ".join(f"{c}={summary[c].mean():.3f}" for c in
-                                            ["rmse", "r2", "r2_rescaled", "spearman", "hot_auc", "hot_f1", "hot_f1_area", "ridge_r2", "ridge_hot_auc", "ridge_hot_f1"]))
+                                            ["rmse", "r2", "r2_rescaled", "spearman", "hot_auc", "hot_f1", "hot_f1_area", "ridge_r2", "ridge_hot_auc", "ridge_hot_f1", "blend_r2", "blend_hot_auc", "blend_hot_f1"]))
     summary.round(4).to_csv(ART / f"{args.tag}_cv_metrics.csv")
 
     # ---- final model on everything
