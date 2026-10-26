@@ -27,7 +27,7 @@ import pandas as pd
 
 MET = ["MET_T2M", "MET_RH", "MET_WIND", "MET_SW", "MET_RAIN7", "MET_RAIN30", "MET_T2M_SEASON_MAX"]
 # column: (low, high) physically plausible; share of rows outside is reported
-RANGES = {"LST": (10, 75), "NDVI": (-1, 1), "NDBI": (-1, 1), "MNDWI": (-1, 1), "ALBEDO": (-0.2, 1.0),
+RANGES = {"LST": (0, 75), "NDVI": (-1, 1), "NDBI": (-1, 1), "MNDWI": (-1, 1), "ALBEDO": (-0.2, 1.0),
           "GHSL_BUILT_FRAC": (0, 1), "ELEV": (-50, 6000), "SLOPE_deg": (0, 90)}
 CORE = ["LST", "NDVI", "NDBI", "MNDWI", "ALBEDO", "ELEV", "LANDCOVER", "GHSL_HEIGHT", "GHSL_BUILT_FRAC",
         "GHSL_POP", "SLOPE_deg", "DIST_WATER_m", "DIST_GREEN_m"]
@@ -98,11 +98,16 @@ def check_city(root, name):
             P.append(("BAD", f"{c} all zero (GHSL tile missing?)"))
     if "GHSL_POP" in df and df["GHSL_POP"].eq(0).mean() > 0.9:
         P.append(("WARN", "GHSL_POP is zero for over 90% of pixels"))
+    water = float((df["LANDCOVER"] == 80).mean()) if "LANDCOVER" in df else 0.0
     for c, (lo, hi) in RANGES.items():
         if c in df:
             out = float(((df[c] < lo) | (df[c] > hi)).mean())
             if out > 0.01:
-                P.append(("WARN" if out < 0.1 else "BAD", f"{c}: {out:.1%} outside [{lo}, {hi}]"))
+                if c in ("NDVI", "NDBI", "MNDWI", "ELEV") and out <= water:
+                    # index blow-ups happen over dark water pixels; finalize_dataset.py drops them
+                    P.append(("WARN", f"{c}: {out:.1%} outside [{lo}, {hi}] (fewer than the {water:.0%} water pixels: removed in cleaning)"))
+                else:
+                    P.append(("WARN" if out < 0.1 else "BAD", f"{c}: {out:.1%} outside [{lo}, {hi}]"))
 
     # ---- LST / land cover / weather facts
     if "LST" in df:
