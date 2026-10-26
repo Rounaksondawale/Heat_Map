@@ -31,6 +31,7 @@ import re
 import shutil
 import sys
 import time
+import traceback
 import zipfile
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
@@ -127,8 +128,10 @@ def city_bbox(lon, lat, half_km):
 
 def ghsl_tiles(bbox):
     W, S, E, N = bbox
-    rows = {int((90 - lat) // 10) + 1 for lat in (S, N)}
-    cols = {int((lon + 180) // 10) + 1 for lon in (W, E)}
+    # GHSL 3-arcsec tiles are 10 deg x 10 deg but NOT aligned to round degrees: R8_C26 spans lat 9.1-19.1 and
+    # lon 69.99-79.99 (checked against the downloaded files). The grid starts at lat 89.1 / lon -180.01.
+    rows = {int((89.1 - lat) // 10) + 1 for lat in (S, N)}
+    cols = {int((lon + 180.01) // 10) + 1 for lon in (W, E)}
     return [f"R{r}_C{c}" for r in sorted(rows) for c in sorted(cols)]
 
 
@@ -255,8 +258,12 @@ def get_ghsl(bbox, tmpl, cache):
                 except Exception as e:  # noqa: BLE001
                     print(f"  !! GHSL {key} {tile} failed: {e}")
                     continue
-            da = rxr.open_rasterio(tif, masked=True).squeeze(drop=True).rio.clip_box(W - .01, S - .01, E + .01, N + .01)
-            parts.append(da)
+            da = rxr.open_rasterio(tif, masked=True).squeeze(drop=True)
+            tw, ts, te, tn = da.rio.bounds()
+            w_, s_, e_, n_ = max(W - .01, tw), max(S - .01, ts), min(E + .01, te), min(N + .01, tn)
+            if w_ >= e_ or s_ >= n_:
+                continue                                  # this tile does not overlap the city box
+            parts.append(da.rio.clip_box(w_, s_, e_, n_))
         if not parts:
             continue
         da = merge_arrays(parts) if len(parts) > 1 else parts[0]
@@ -475,6 +482,15 @@ def build_city(name, args, cat, out_root):
           f"scenes {len(dates)}")
 
 
+def _where(e):
+    """Last stack frame of a failure (also for errors raised in a worker process), so a log line says WHERE it broke."""
+    frames = [l.strip() for l in str(getattr(e, "__cause__", "") or "").splitlines() if l.strip().startswith("File")]
+    if frames:
+        return frames[-1]
+    tb = traceback.extract_tb(e.__traceback__)
+    return f'File "{tb[-1].filename}", line {tb[-1].lineno}, in {tb[-1].name}' if tb else ""
+
+
 class _Prefix:
     """Tag every output line with the city so parallel logs stay readable."""
     def __init__(self, tag, stream):
@@ -535,7 +551,7 @@ def main():
             try:
                 _run_city(n, args, out_root, threads)
             except Exception as e:  # noqa: BLE001  one bad city must not kill a long run
-                print(f"!! {n} failed: {type(e).__name__}: {e}")
+                print(f"!! {n} failed: {type(e).__name__}: {e} | {_where(e)}")
                 failed.append(n)
     else:
         import multiprocessing as mp
@@ -546,7 +562,7 @@ def main():
                 try:
                     f.result()
                 except Exception as e:  # noqa: BLE001
-                    print(f"!! {n} failed: {type(e).__name__}: {e}")
+                    print(f"!! {n} failed: {type(e).__name__}: {e} | {_where(e)}")
                     failed.append(n)
 
     tabs = sorted((out_root / "cities").glob("*/table.csv.gz"))
