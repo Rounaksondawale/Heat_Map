@@ -51,6 +51,7 @@ def main():
     ap.add_argument("--keep-bad-indices", action="store_true",
                     help="do not drop rows whose NDVI / NDBI / MNDWI / ELEV are outside the physical range")
     ap.add_argument("--allow-missing-cities", action="store_true", help="for partial / test runs")
+    ap.add_argument("--exclude-cities", nargs="*", default=[], help="leave these cities out of the cleaned table (raw files are untouched)")
     ap.add_argument("--no-csv", action="store_true", help="write only the (much faster) parquet file, not the CSV")
     a = ap.parse_args()
     src = Path(a.src)
@@ -63,6 +64,10 @@ def main():
     print(f"loaded {len(df):,} rows x {df.shape[1]} cols from {src}\n")
 
     # ------------------------------------------------ 1. drop NaN rows in the named cities
+    if a.exclude_cities:
+        n_ex = int(df["city"].isin(a.exclude_cities).sum())
+        df = df[~df["city"].isin(a.exclude_cities)].reset_index(drop=True)
+        print(f"excluded {a.exclude_cities}: {n_ex:,} rows left out of the cleaned table (raw files unchanged)\n")
     feat = [c for c in df.columns if c not in META_COLS]
     n_before = df["city"].value_counts()
     clean_cities = sorted(df["city"].unique()) if "all" in a.drop_nan_city else a.drop_nan_city
