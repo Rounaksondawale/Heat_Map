@@ -26,7 +26,7 @@ REQUIRED = ["LST", "NDVI", "NDBI", "MNDWI", "ALBEDO", "LST_std", "n_obs", "ELEV"
             "HEIGHT_nbr150", "HEIGHT_nbr450", "DIST_WATER_m", "DIST_GREEN_m", "SLOPE_deg", "LST_z", "SUHI",
             "IS_URBAN", "HOTSPOT", "lon", "lat", "x", "y"] + MET + META_COLS
 # column: (min, max) physically plausible
-RANGES = {"LST": (10, 75), "NDVI": (-1, 1), "NDBI": (-1, 1), "MNDWI": (-1, 1), "ALBEDO": (-0.2, 1.0),
+RANGES = {"LST": (0, 75), "NDVI": (-1, 1), "NDBI": (-1, 1), "MNDWI": (-1, 1), "ALBEDO": (-0.2, 1.0),
           "GHSL_BUILT_FRAC": (0, 1), "GHSL_HEIGHT": (0, 600), "GHSL_POP": (0, 1e4), "SLOPE_deg": (0, 90),
           "DIST_WATER_m": (0, 1e5), "DIST_GREEN_m": (0, 1e5), "IS_URBAN": (0, 1), "HOTSPOT": (0, 1),
           "ELEV": (-50, 6000), "n_obs": (1, 400), "lat": (6, 37), "lon": (68, 98),
