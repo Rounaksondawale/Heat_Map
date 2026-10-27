@@ -25,7 +25,7 @@ import re
 import sys
 import time
 import warnings
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 from pathlib import Path
 
 import matplotlib
@@ -178,6 +178,61 @@ def maps(df, out_dir, label="held-out city"):
     print("maps ->", out_dir)
 
 
+LEAKY = {"LST", "LST_z", "SUHI", "HOTSPOT", "LST_std", "n_obs", "IS_URBAN", "LST_anom", "TARGET", "pred_lgbm", "pred_ridge",
+         "x", "y", "lon", "lat", "city", "climate", "block_id"}
+
+
+def avail_gb():
+    """Free RAM in GB (Linux /proc/meminfo, or psutil); None if unknown."""
+    try:
+        import psutil
+        return psutil.virtual_memory().available / 1e9
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        for line in open("/proc/meminfo"):
+            if line.startswith("MemAvailable"):
+                return int(line.split()[1]) / 1e6
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
+def data_report(df, feats, args):
+    """Print what the model will train on, so it can be verified once (--check-only) before a long run."""
+    num_f = [f for f in feats if f != "LANDCOVER"]
+    X = df[num_f]
+    bar = "=" * 78
+    print(bar)
+    print("DATA CHECK: what the model will be trained on")
+    print(bar)
+    tgt = "(LST - city mean) / city std" if args.target == "z" else "LST - city mean (C)"
+    print(f"rows {len(df):,} | cities {df['city'].nunique()} | features {len(feats)} | target = {tgt}")
+    print("features: " + ", ".join(feats))
+    leak = sorted(set(feats) & LEAKY)
+    print("leakage guard (no target-derived / location columns among the features): " + ("FAIL " + str(leak) if leak else "ok"))
+    if leak:
+        raise SystemExit("remove the leaking features above")
+    n_nan, n_inf = int(X.isna().sum().sum()), int(np.isinf(X.to_numpy(dtype="float64", na_value=0)).sum())
+    const = [f for f in num_f if X[f].nunique() <= 1]
+    print(f"NaN in features: {n_nan:,} | inf: {n_inf:,} | constant features: {const or 'none'}")
+    print(f"target: NaN {int(df['TARGET'].isna().sum()):,} | overall mean {df['TARGET'].mean():+.3f} | std {df['TARGET'].std():.3f}")
+    g = df.groupby("city")
+    tbl = pd.DataFrame({"rows": g.size(), "target_mean": g["TARGET"].mean().round(3), "target_std": g["TARGET"].std().round(3),
+                        "urban_%": (g["IS_URBAN"].mean() * 100).round(1), "hotspot_px": g["HOTSPOT"].sum().astype(int)})
+    print("per city (target_mean should be ~0 everywhere" + (", target_std ~1 for --target z" if args.target == "z" else "") + "):")
+    print(tbl.to_string())
+    small = tbl.index[tbl["rows"] < 20_000].tolist()
+    print("cities with fewer than 20k rows: " + (str(small) if small else "none"))
+    if args.city_norm:
+        cn = [f for f in feats if f.endswith("_cn")]
+        worst = max(abs(g[f].mean()).max() for f in cn)
+        print(f"city-relative features ({len(cn)}): largest per-city mean = {worst:.2e} (should be ~0)")
+    est = len(df) * (len(feats) + 1) * 4 / 1e9
+    print(f"memory: data about {est:.1f} GB as float32 per process; free RAM now {avail_gb() or float('nan'):.1f} GB")
+    print(bar)
+
+
 _W = {}      # per-process copy of the data used by the fold workers
 
 
@@ -214,6 +269,7 @@ def main():
     ap.add_argument("--no-monotone", action="store_true")
     ap.add_argument("--no-met", action="store_true", help="drop the city-level weather features")
     ap.add_argument("--drop-feats", nargs="*", default=[], help="features to leave out, e.g. ELEV LANDCOVER (city-specific offsets do not transfer)")
+    ap.add_argument("--check-only", action="store_true", help="prepare the data, print the DATA CHECK report and stop (about a minute)")
     ap.add_argument("--simple", action="store_true", help="shallower, more heavily regularised trees (better transfer to unseen cities)")
     ap.add_argument("--keep-water", action="store_true")
     ap.add_argument("--target", choices=["anom", "z"], default="anom",
@@ -231,6 +287,13 @@ def main():
 
     df, feats = load(args.data, args.keep_water, not args.no_met, args.target, args.city_norm, args.context)
     feats = [f for f in feats if f not in args.drop_feats]
+    for c in feats + ["TARGET"]:                       # float32 halves memory (matters with 50 cities x parallel folds)
+        if c != "LANDCOVER" and df[c].dtype == "float64":
+            df[c] = df[c].astype("float32")
+    data_report(df, feats, args)
+    if args.check_only:
+        print("--check-only: stopping before training.")
+        return
     if args.cv == "loco" and df["city"].nunique() < 3:
         print("fewer than 3 cities -> using spatial-block CV")
         args.cv = "block"
@@ -246,8 +309,16 @@ def main():
     fold_list = list(folds(df, args.cv))
     workers = args.workers or (min(len(fold_list), cores) if len(df) > 200_000 else 1)
     workers = max(1, min(workers, len(fold_list), cores))
+    free = avail_gb()
+    per_worker = len(df) * (len(feats) + 1) * 4 * 2.5 / 1e9          # data + training copies, rough
+    if free and workers > 1:
+        by_ram = max(1, int(free * 0.75 / per_worker))
+        if by_ram < workers:
+            print(f"RAM guard: free {free:.0f} GB, about {per_worker:.1f} GB per worker -> {by_ram} fold(s) at a time instead of {workers}")
+            workers = by_ram
     threads = max(1, cores // workers) if workers > 1 else -1
     print(f"{cores} cores -> {workers} fold(s) in parallel x {'all' if threads < 0 else threads} thread(s) each")
+    print(f"training {len(fold_list)} folds; the first result appears after one fold finishes (a few minutes). Heartbeat every 60 s.")
 
     tasks = []                                         # sampling is done up front, in one fixed order -> same result for any #workers
     for name, test, unit in fold_list:
@@ -265,7 +336,9 @@ def main():
         df.loc[test, "pred_lgbm"] = p_l
         df.loc[test, "pred_ridge"] = p_r
         best_iters.append(best_it)
-        print(f"  held out {name:12s} trees {best_it:4d}  R2 {r2:5.2f}  ({time.time() - t0:5.0f}s)")
+        k, el = len(best_iters), time.time() - t0
+        eta = el / k * (len(tasks) - k)
+        print(f"  held out {name:12s} trees {best_it:4d}  R2 {r2:5.2f}  [{k}/{len(tasks)} done, {el / 60:.1f} min elapsed, ~{eta / 60:.1f} min left]")
 
     if workers == 1:
         _W.update(df=df, feats=feats, num=num, params=params)
@@ -277,8 +350,14 @@ def main():
         try:
             with ProcessPoolExecutor(workers, mp_context=mp.get_context("spawn"), initializer=_init_worker,
                                      initargs=(str(tmp), feats, num, params)) as ex:
-                for f in as_completed([ex.submit(_fit_fold, t) for t in tasks]):
-                    collect(f.result())
+                pending = {ex.submit(_fit_fold, t) for t in tasks}
+                while pending:
+                    done, pending = wait(pending, timeout=60, return_when=FIRST_COMPLETED)
+                    for f in done:
+                        collect(f.result())
+                    if not done:
+                        print(f"  ... {len(best_iters)}/{len(tasks)} folds done, {len(pending)} running or queued, "
+                              f"{(time.time() - t0) / 60:.1f} min elapsed")
         finally:
             tmp.unlink(missing_ok=True)
     best_iters.sort()                                  # completion order varies; the mean does not
