@@ -108,3 +108,58 @@ def area_scores(g, pred_col, truth_col="LST", q=0.9, win=3, min_ha=5.0, overlap=
             "area_f1": f1, "area_iou": iou,
             "cluster_recall": float(found.mean()) if len(found) else np.nan,
             "cluster_precision": float(real.mean()) if len(real) else np.nan}
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Statistical hotspots on the COMPLETE grid (Getis-Ord Gi*): where heat is concentrated compared with the rest of
+# the area. The number of hotspots is not fixed: a uniform area has none.
+# ---------------------------------------------------------------------------------------------------------------
+def gi_star(a, valid, win=15):
+    """Getis-Ord Gi* z-score of a 2-D field, binary weights over a win x win window (missing pixels excluded).
+    z >= 1.96 / 2.58 means a cluster of unusually high values at 95 % / 99 % confidence."""
+    v = valid.astype("float64")
+    x = np.where(valid, a, 0.0)
+    n = v.sum()
+    mean = x.sum() / n
+    s = np.sqrt((np.where(valid, (a - mean) ** 2, 0.0)).sum() / n)
+    k2 = win * win
+    m = uniform_filter(v, win, mode="constant") * k2             # neighbours that exist
+    s1 = uniform_filter(x, win, mode="constant") * k2            # their sum
+    denom = s * np.sqrt(np.maximum((n * m - m ** 2) / (n - 1), 1e-12))
+    z = (s1 - mean * m) / denom
+    z[~valid] = np.nan
+    local_mean = np.where(m > 0, s1 / np.maximum(m, 1e-9), np.nan)
+    excess = (local_mean - mean) / max(s, 1e-12)                  # local mean above the area mean, in std units
+    excess[~valid] = np.nan
+    return z, excess
+
+
+def hotspot_grid(a, valid, res=30.0, win=15, z_thr=2.58, min_excess=0.5, min_ha=5.0, allow=None):
+    """Hotspot patches on a full grid. A pixel is hot if Gi* >= z_thr AND its neighbourhood is at least `min_excess`
+    standard deviations above the area mean (so a statistically significant but tiny difference does not count).
+    Returns (cluster ids with 0 = none, gi z-scores, excess). `allow` optionally restricts to e.g. urban pixels."""
+    z, excess = gi_star(a, valid, win)
+    hot = (z >= z_thr) & (excess >= min_excess) & valid
+    if allow is not None:
+        hot &= allow
+    lab, n = label(hot, structure=np.ones((3, 3)))
+    min_px = max(1, int(np.ceil(min_ha * 1e4 / res ** 2)))
+    sizes = np.bincount(lab.ravel(), minlength=n + 1)
+    keep = sizes >= min_px
+    keep[0] = False
+    new_id = np.zeros(n + 1, int)
+    new_id[keep] = np.arange(1, keep.sum() + 1)
+    return new_id[lab], z, excess
+
+
+def grid_area_scores(true_ids, pred_ids, overlap=0.3):
+    """Same scores as area_scores(), for two cluster-id grids."""
+    t, p = true_ids > 0, pred_ids > 0
+    inter = int((t & p).sum())
+    prec, rec = inter / max(p.sum(), 1), inter / max(t.sum(), 1)
+    found = _hit_share(true_ids.ravel(), p.ravel()) >= overlap
+    real = _hit_share(pred_ids.ravel(), t.ravel()) >= overlap
+    return {"true_areas": int(true_ids.max()), "pred_areas": int(pred_ids.max()),
+            "area_f1": 2 * prec * rec / max(prec + rec, 1e-9), "area_iou": inter / max(int((t | p).sum()), 1),
+            "cluster_recall": float(found.mean()) if len(found) else np.nan,
+            "cluster_precision": float(real.mean()) if len(real) else np.nan}

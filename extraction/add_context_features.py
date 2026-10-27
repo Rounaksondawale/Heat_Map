@@ -33,10 +33,8 @@ def masked_mean(a, w):
     return np.where(den > 1e-6, num / np.maximum(den, 1e-12), np.nan)
 
 
-def city_features(nc_path, xs, ys):
-    ds = xr.open_dataset(nc_path)
-    ix = xr.DataArray(xs, dims="p")
-    iy = xr.DataArray(ys, dims="p")
+def context_grids(ds):
+    """Surroundings features on the full 30 m grid: {name: DataArray(y, x)}."""
     out = {}
     for v in VARS:
         a = ds[v].values.astype("float64")
@@ -47,6 +45,14 @@ def city_features(nc_path, xs, ys):
         for w in TEXTURE.get(v, ()):
             var = masked_mean(a ** 2, w) - means.get(w, masked_mean(a, w)) ** 2
             out[f"{v}_sd{w * 30}"] = ds[v].copy(data=np.sqrt(np.clip(var, 0, None)))
+    return out
+
+
+def city_features(nc_path, xs, ys):
+    ds = xr.open_dataset(nc_path)
+    ix = xr.DataArray(xs, dims="p")
+    iy = xr.DataArray(ys, dims="p")
+    out = context_grids(ds)
     cols = {k: g.sel(x=ix, y=iy).values.astype("float32") for k, g in out.items()}
     ds.close()
     return cols

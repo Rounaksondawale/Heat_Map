@@ -284,6 +284,8 @@ def main():
     ap.add_argument("--folds", type=int, default=10, help="number of folds for --cv cityfold")
     ap.add_argument("--max-bin", type=int, default=255, help="LightGBM histogram bins; 63 trains noticeably faster with little loss")
     ap.add_argument("--final-sample", type=float, default=1.0, help="fraction of rows for the final model (0.35 is usually enough and much faster)")
+    ap.add_argument("--holdout-cities", nargs="*", default=[],
+                    help="train WITHOUT these cities (keep them for an honest full-grid test with predict_grid.py)")
     ap.add_argument("--check-only", action="store_true", help="prepare the data, print the DATA CHECK report and stop (about a minute)")
     ap.add_argument("--simple", action="store_true", help="shallower, more heavily regularised trees (better transfer to unseen cities)")
     ap.add_argument("--keep-water", action="store_true")
@@ -302,6 +304,9 @@ def main():
 
     df, feats = load(args.data, args.keep_water, not args.no_met, args.target, args.city_norm, args.context)
     feats = [f for f in feats if f not in args.drop_feats]
+    if args.holdout_cities:
+        df = df[~df["city"].isin(args.holdout_cities)].reset_index(drop=True)
+        print(f"held out of training for a later unseen-city test: {args.holdout_cities}; training on {df['city'].nunique()} cities")
     for c in feats + ["TARGET"]:                       # float32 halves memory (matters with 50 cities x parallel folds)
         if c != "LANDCOVER" and df[c].dtype == "float64":
             df[c] = df[c].astype("float32")
