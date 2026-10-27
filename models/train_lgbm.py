@@ -109,14 +109,18 @@ def lgb_params(args, feats):
 
 
 def folds(df, cv):
+    """Yield (fold name, test mask, unit codes). Units are integer codes (sorted order), not strings: sorting / comparing
+    9 million text values for each of 50 folds took minutes of single-core time."""
     if cv == "loco":
-        for c in sorted(df["city"].unique()):
-            yield c, (df["city"] == c).to_numpy(), df["city"].to_numpy()
+        codes, names = pd.factorize(df["city"], sort=True)
+        for k, c in enumerate(names):
+            yield c, codes == k, codes
     else:
+        codes = pd.factorize(df["block_id"], sort=True)[0]
         for i, (_, te) in enumerate(GroupKFold(5).split(df, groups=df["block_id"])):
             m = np.zeros(len(df), bool)
             m[te] = True
-            yield f"fold{i}", m, df["block_id"].to_numpy()
+            yield f"fold{i}", m, codes
 
 
 def hotspot_scores(g, pred_col):
