@@ -410,7 +410,7 @@ def main():
     print("top drivers (share of gain):\n" + (imp / imp.sum()).round(3).head(10).to_string())
 
     # ---- out-of-fold predictions (honest: every city predicted by a model that never saw it) + maps
-    cols = ["city", "x", "y", "lon", "lat", "LST", "LST_anom", "TARGET", "pred_lgbm", "IS_URBAN", "HOTSPOT", "block_id"]
+    cols = ["city", "x", "y", "lon", "lat", "LST", "LST_anom", "TARGET", "pred_lgbm", "pred_ridge", "pred_blend", "IS_URBAN", "HOTSPOT", "block_id"]
     df[cols].round(4).to_csv(OUT / f"{args.tag}_oof_predictions.csv.gz", index=False)
     if not args.no_maps:
         maps(df, OUT / f"{args.tag}_maps")

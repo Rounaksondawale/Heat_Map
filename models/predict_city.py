@@ -33,7 +33,7 @@ from sklearn.metrics import roc_auc_score
 
 sys.path.insert(0, str(Path(__file__).parent))
 import train_lgbm as tl                      # noqa: E402  (BASE / NORM feature lists)
-from hotspots import hotspot_flag            # noqa: E402
+from hotspots import area_scores, cluster_table, hotspot_areas  # noqa: E402
 
 
 def prepare(df, cfg):
@@ -62,6 +62,7 @@ def main():
     ap.add_argument("--table", default=str(tl.ROOT / "data/multi_city/all_cities_clean_ctx.csv.gz"))
     ap.add_argument("--out", default=str(tl.OUT / "predictions"))
     ap.add_argument("--top", type=float, default=0.10, help="share of urban pixels flagged as hotspots")
+    ap.add_argument("--min-ha", type=float, default=5.0, help="smallest connected patch (hectares) that counts as a hotspot area")
     a = ap.parse_args()
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -81,7 +82,9 @@ def main():
     df["heat_score"] = (df["heat_lgbm"] + df["heat_ridge"]) / 2
     urban = df["IS_URBAN"] == 1
     df["hotspot"] = (df["heat_score"] >= df.loc[urban, "heat_score"].quantile(1 - a.top)) & urban
-    df["hotspot_area"] = hotspot_flag(df, "heat_score", q=1 - a.top)
+    df["cluster_id"] = hotspot_areas(df, "heat_score", q=1 - a.top, min_ha=a.min_ha)      # connected patches
+    df["hotspot_area"] = df["cluster_id"] > 0
+    clusters = cluster_table(df, df["cluster_id"], "heat_score")
 
     # ---------------- trust report
     print(f"\nTRUST REPORT for {a.city}  (model: {a.tag})")
@@ -102,27 +105,36 @@ def main():
         print(f"  check against observed satellite hotspots: AUC {roc_auc_score(u['HOTSPOT'], u['heat_score']):.2f}, "
               f"F1 {2 * p * r / max(p + r, 1e-9):.2f}  (for a city the model was trained on this is optimistic)")
 
+    if "LST" in df:
+        s = area_scores(df, "heat_score", "LST", q=1 - a.top, min_ha=a.min_ha)
+        print(f"  hotspot AREAS vs observed: {s['pred_areas']} predicted / {s['true_areas']} observed patches; "
+              f"pixel overlap F1 {s['area_f1']:.2f}, patches found {s['cluster_recall']:.0%}, predicted patches real {s['cluster_precision']:.0%}")
+
     # ---------------- outputs
-    cols = ["x", "y", "lon", "lat", "heat_score", "hotspot", "hotspot_area"]
+    print(f"\nHOTSPOT AREAS (patches of >= {a.min_ha:g} ha): {len(clusters)}, total {clusters['area_ha'].sum():,.0f} ha")
+    print(clusters.head(10).round(3).to_string(index=False))
+    cols = ["x", "y", "lon", "lat", "heat_score", "hotspot", "hotspot_area", "cluster_id"]
     stem = out / f"{a.city}_{a.tag}"
     df[cols].round(4).to_csv(str(stem) + ".csv.gz", index=False)
+    clusters.round(4).to_csv(str(stem) + "_hotspot_areas.csv", index=False)
     fig, ax = plt.subplots(1, 2, figsize=(13, 6), sharex=True, sharey=True)
     lim = float(np.nanpercentile(np.abs(df["heat_score"]), 99))
     s = ax[0].scatter(df["x"], df["y"], c=df["heat_score"], s=1.5, marker="s", cmap="RdYlBu_r", vmin=-lim, vmax=lim, linewidths=0)
     plt.colorbar(s, ax=ax[0], shrink=0.7, label="relative heat (city's own spread)")
     ax[0].set_title(f"{a.city}: predicted relative heat")
     ax[1].scatter(df["x"], df["y"], c="#dddddd", s=1.5, marker="s", linewidths=0)
-    h = df[df["hotspot"]]
-    ax[1].scatter(h["x"], h["y"], c="#d7191c", s=2.5, marker="s", linewidths=0, label=f"hotspot ({len(h):,} px)")
+    h = df[df["hotspot_area"]]
+    ax[1].scatter(h["x"], h["y"], c="#d7191c", s=2.5, marker="s", linewidths=0,
+                  label=f"{len(clusters)} hotspot areas, {clusters['area_ha'].sum():,.0f} ha")
     ax[1].legend(loc="lower left", markerscale=4, fontsize=9)
-    ax[1].set_title(f"{a.city}: top {a.top:.0%} of urban pixels")
+    ax[1].set_title(f"{a.city}: hotspot areas (top {a.top:.0%} of urban land, patches >= {a.min_ha:g} ha)")
     for x_ in ax:
         x_.set_aspect("equal")
         x_.set_xticks([])
         x_.set_yticks([])
     fig.savefig(str(stem) + ".png", dpi=130, bbox_inches="tight")
     plt.close(fig)
-    print(f"\nwrote {stem}.csv.gz and {stem}.png")
+    print(f"\nwrote {stem}.csv.gz, {stem}_hotspot_areas.csv and {stem}.png")
 
 
 if __name__ == "__main__":
