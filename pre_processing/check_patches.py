@@ -39,7 +39,7 @@ def main():
     missing = [c for c in meta["train_cities"] if c not in files["train"]] + [c for c in meta["val_cities"] if c not in files["val"]]
     report("PASS" if not missing else "WARN", "cities with no patches", ", ".join(missing) if missing else "none (every city has patches)")
 
-    rows, xs, bad = [], [], []
+    rows, xs, bad, warn = [], [], [], []
     hist = np.zeros(256, "int64")
     for split, fs in files.items():
         seen = set()
@@ -56,9 +56,10 @@ def main():
             if not np.isfinite(X).all():
                 bad.append(f"{city}: NaN/inf in X")
             if (y[ok] <= 0).any() or (y[ok] >= 75).any():
-                bad.append(f"{city}: LST outside (0, 75) on usable pixels")
-            if (np.abs(X.astype("float32")).max() > 60):
-                bad.append(f"{city}: |X| > 60 (max {np.abs(X.astype('float32')).max():.0f})")
+                warn.append(f"{city}: {int(((y <= 0) | (y >= 75))[ok].sum())} LST pixels outside (0, 75)")
+            xm = float(np.abs(X.astype("float32")).max())
+            if xm > 60:
+                warn.append(f"{city}: |X| max {xm:.0f}")
             if (lc[ok] == 255).any():
                 bad.append(f"{city}: usable pixels with unknown landcover")
             if len({tuple(q) for q in pos}) != n:
@@ -70,7 +71,9 @@ def main():
             d.close()
     t = pd.DataFrame(rows)
     print()
-    report("PASS" if not bad else "FAIL", "array sanity (shape, NaN, LST range, X range, landcover, positions)",
+    report("PASS" if not warn else "WARN", "outliers (LST outside 0-75 C, standardised feature > 60 sd)",
+           "none" if not warn else f"{len(warn)} cities, e.g. " + "; ".join(warn[:4]) + " | train_unet.py masks bad LST and clips features to +-10 sd")
+    report("PASS" if not bad else "FAIL", "array sanity (shape, NaN, landcover, positions)",
            "all files pass" if not bad else "; ".join(bad[:8]))
 
     pc = t.groupby("split")["patches"].describe()[["min", "50%", "max"]]

@@ -4,7 +4,7 @@ Train a U-Net: 64x64 feature patches in -> 64x64 land surface temperature out.
     python models/train_unet.py                                 # patches in pre_processing/patches, 30 epochs
     python models/train_unet.py --epochs 2 --max-patches 2000   # quick test
 
-Input per patch: the 45 standardised numeric features + LANDCOVER (learned 4-channel embedding). Target: LST in degrees C
+Input per patch: the 45 standardised numeric features (clipped to +-10) + LANDCOVER (learned 4-channel embedding). Target: LST in degrees C
 (standardised with the training mean/std inside the loss). The loss is computed on mask == 1 pixels only.
 Validation uses the held-out cities (no overlap between patches). Each epoch prints train loss, validation MAE (deg C),
 RMSE, R2 and the time; the best model by validation MAE is saved to <out>/best.pt, with metrics.csv and val_per_city.csv.
@@ -29,10 +29,14 @@ def load_split(root, split, max_patches=0, seed=0):
         X.append(d["X"]); L.append(d["lc"]); Y.append(d["y"]); M.append(d["mask"])
         C += [p.stem] * len(d["X"])
     X, L, Y, M, C = np.concatenate(X), np.concatenate(L), np.concatenate(Y), np.concatenate(M), np.array(C)
+    M = M * ((Y > 0) & (Y < 75)).astype("uint8")                    # drop implausible LST pixels from the loss (e.g. Kochi > 75 C)
     if max_patches and len(X) > max_patches:
         i = np.sort(np.random.default_rng(seed).choice(len(X), max_patches, replace=False))
         X, L, Y, M, C = X[i], L[i], Y[i], M[i], C[i]
     return X, L, Y, M, C
+
+
+CLIP = 10.0        # standardised features beyond +-10 sd (rare extreme pixels) are clipped
 
 
 def block(i, o):
@@ -82,7 +86,7 @@ def evaluate(model, data, dev, mu, sd, bs=256):
     model.eval()
     per = {}
     for i in range(0, len(X), bs):
-        x = torch.from_numpy(X[i:i + bs]).to(dev).float()
+        x = torch.from_numpy(X[i:i + bs]).to(dev).float().clamp(-CLIP, CLIP)
         lc = torch.from_numpy(L[i:i + bs]).to(dev)
         y = torch.from_numpy(Y[i:i + bs]).to(dev)
         m = torch.from_numpy(M[i:i + bs]).to(dev).bool()
@@ -142,7 +146,7 @@ def main():
         tot = cnt = 0.0
         for b in range(nb):
             i = np.sort(perm[b * a.batch:(b + 1) * a.batch])
-            x = torch.from_numpy(tr[0][i]).to(dev).float()
+            x = torch.from_numpy(tr[0][i]).to(dev).float().clamp(-CLIP, CLIP)
             lc = torch.from_numpy(tr[1][i]).to(dev)
             y = torch.from_numpy(tr[2][i]).to(dev)
             m = torch.from_numpy(tr[3][i]).to(dev)
