@@ -105,16 +105,23 @@ def lgb_params(args, feats):
                 min_child_samples=3000 if simple else 200, subsample=0.8, subsample_freq=1,
                 colsample_bytree=0.6 if simple else 0.8, reg_lambda=50.0 if simple else 5.0,
                 monotone_constraints=[-1 if (f in MONO_DOWN or re.fullmatch(r"NDVI_c\d+", f)) else 0 for f in feats] if not args.no_monotone else None,
-                n_jobs=-1, verbose=-1, random_state=0)
+                n_jobs=-1, verbose=-1, random_state=0, max_bin=getattr(args, "max_bin", 255))
 
 
-def folds(df, cv):
+def folds(df, cv, n_folds=10):
     """Yield (fold name, test mask, unit codes). Units are integer codes (sorted order), not strings: sorting / comparing
     9 million text values for each of 50 folds took minutes of single-core time."""
     if cv == "loco":
         codes, names = pd.factorize(df["city"], sort=True)
         for k, c in enumerate(names):
             yield c, codes == k, codes
+    elif cv == "cityfold":                       # unseen-city test with N folds, each holding out several whole cities
+        codes, names = pd.factorize(df["city"], sort=True)
+        for i, (_, te) in enumerate(GroupKFold(min(n_folds, len(names))).split(np.zeros(len(codes)), groups=codes)):
+            m = np.zeros(len(df), bool)
+            m[te] = True
+            held = list(names[np.unique(codes[te])])
+            yield f"set{i} ({len(held)} cities)", m, codes
     else:
         codes = pd.factorize(df["block_id"], sort=True)[0]
         for i, (_, te) in enumerate(GroupKFold(5).split(df, groups=df["block_id"])):
@@ -267,12 +274,16 @@ def _fit_fold(task):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", default=str(ROOT / "data/multi_city/all_cities_clean.csv.gz"))
-    ap.add_argument("--cv", choices=["loco", "block"], default="loco")
+    ap.add_argument("--cv", choices=["loco", "block", "cityfold"], default="loco",
+                    help="loco: one city held out per fold; cityfold: --folds folds of several held-out cities (much faster); block: spatial blocks")
     ap.add_argument("--cv-sample", type=float, default=0.3, help="fraction of training rows used in each CV fold")
     ap.add_argument("--trees", type=int, default=800, help="max trees (early stopping picks fewer)")
     ap.add_argument("--no-monotone", action="store_true")
     ap.add_argument("--no-met", action="store_true", help="drop the city-level weather features")
     ap.add_argument("--drop-feats", nargs="*", default=[], help="features to leave out, e.g. ELEV LANDCOVER (city-specific offsets do not transfer)")
+    ap.add_argument("--folds", type=int, default=10, help="number of folds for --cv cityfold")
+    ap.add_argument("--max-bin", type=int, default=255, help="LightGBM histogram bins; 63 trains noticeably faster with little loss")
+    ap.add_argument("--final-sample", type=float, default=1.0, help="fraction of rows for the final model (0.35 is usually enough and much faster)")
     ap.add_argument("--check-only", action="store_true", help="prepare the data, print the DATA CHECK report and stop (about a minute)")
     ap.add_argument("--simple", action="store_true", help="shallower, more heavily regularised trees (better transfer to unseen cities)")
     ap.add_argument("--keep-water", action="store_true")
@@ -310,7 +321,7 @@ def main():
     t0 = time.time()
 
     cores = os.cpu_count() or 1
-    fold_list = list(folds(df, args.cv))
+    fold_list = list(folds(df, args.cv, args.folds))
     workers = args.workers or (min(len(fold_list), cores) if len(df) > 200_000 else 1)
     workers = max(1, min(workers, len(fold_list), cores))
     free = avail_gb()
@@ -378,10 +389,12 @@ def main():
 
     # ---- final model on everything
     n_trees = max(50, int(np.mean(best_iters) * 1.1))
-    final = lgb.LGBMRegressor(**{**params, "n_estimators": n_trees}).fit(df[feats], df["TARGET"])
+    fin = df.sample(frac=args.final_sample, random_state=0) if args.final_sample < 1 else df
+    print(f"final model on {len(fin):,} rows, {n_trees} trees ...")
+    final = lgb.LGBMRegressor(**{**params, "n_estimators": n_trees}).fit(fin[feats], fin["TARGET"])
     final.booster_.save_model(str(ART / f"{args.tag}.txt"))
     import joblib      # the Ridge half of the LightGBM + Ridge blend, saved so predict_city.py can use both
-    ridge = make_pipeline(StandardScaler(), Ridge(alpha=1.0)).fit(df[num], df["TARGET"])
+    ridge = make_pipeline(StandardScaler(), Ridge(alpha=1.0)).fit(fin[num], fin["TARGET"])
     joblib.dump(ridge, ART / f"{args.tag}_ridge.joblib")
     rng_q = df[num].quantile([0.01, 0.99])             # what the model has seen, for the new-city trust check
     (ART / f"{args.tag}_ranges.json").write_text(json.dumps(
