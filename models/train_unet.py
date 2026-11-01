@@ -1,15 +1,23 @@
 """
 Train a U-Net: 64x64 feature patches in -> 64x64 land surface temperature out.
 
-    python models/train_unet.py                                 # patches in pre_processing/patches, 30 epochs
+    python models/train_unet.py                                 # patches in pre_processing/patches, 12 epochs
     python models/train_unet.py --epochs 2 --max-patches 2000   # quick test
 
-Input per patch: the 45 standardised numeric features (clipped to +-10) + LANDCOVER (learned 4-channel embedding). Target: LST in degrees C
-(standardised with the training mean/std inside the loss). The loss is computed on mask == 1 pixels only.
+Input per patch: the 45 standardised numeric features (clipped to +-10) + LANDCOVER (learned 4-channel embedding).
+Target (--target):
+    anomaly   (default) LST minus the mean LST of that patch's city: the model learns where a city is hotter or cooler than
+              its own average, which is what a hotspot is. Validation adds the city's true mean back, so MAE / bias / R2 per
+              city measure the within-city pattern only (the pooled R2 is then not comparable with an absolute run).
+    absolute  LST in degrees C.
+The loss is computed on mask == 1 pixels only. Against overfitting to the training cities: dropout, weight decay and an
+exponential moving average of the weights (--ema; the averaged weights are what is validated and saved).
 Validation uses the held-out cities (no overlap between patches). Each epoch prints train loss, validation MAE (deg C),
-RMSE, R2 and the time; the best model by validation MAE is saved to <out>/best.pt, with metrics.csv and val_per_city.csv.
+RMSE, mean per-city R2 and the time; the best epoch by validation MAE is saved to <out>/best.pt, with metrics.csv and
+val_per_city.csv.
 """
 import argparse
+import copy
 import json
 import os
 import time
@@ -36,25 +44,37 @@ def load_split(root, split, max_patches=0, seed=0):
     return X, L, Y, M, C
 
 
+def city_offsets(data, anomaly):
+    """Per-patch offset (N, 1, 1): the true mean LST of the patch's city (anomaly target) or 0 (absolute target)."""
+    _, _, Y, M, C = data
+    if not anomaly:
+        return np.zeros((len(Y), 1, 1), "float32")
+    mean = {c: float(Y[C == c][M[C == c] == 1].mean()) for c in np.unique(C)}
+    return np.array([mean[c] for c in C], "float32")[:, None, None]
+
+
 CLIP = 10.0        # standardised features beyond +-10 sd (rare extreme pixels) are clipped
 
 
-def block(i, o):
-    return nn.Sequential(nn.Conv2d(i, o, 3, padding=1, bias=False), nn.BatchNorm2d(o), nn.ReLU(inplace=True),
-                         nn.Conv2d(o, o, 3, padding=1, bias=False), nn.BatchNorm2d(o), nn.ReLU(inplace=True))
+def block(i, o, drop=0.0):
+    layers = [nn.Conv2d(i, o, 3, padding=1, bias=False), nn.BatchNorm2d(o), nn.ReLU(inplace=True),
+              nn.Conv2d(o, o, 3, padding=1, bias=False), nn.BatchNorm2d(o), nn.ReLU(inplace=True)]
+    if drop:
+        layers.append(nn.Dropout2d(drop))
+    return nn.Sequential(*layers)
 
 
 class UNet(nn.Module):
-    def __init__(self, n_num, n_lc, base=32, emb=4):
+    def __init__(self, n_num, n_lc, base=32, emb=4, drop=0.0):
         super().__init__()
         self.emb = nn.Embedding(n_lc + 1, emb)                     # last index = unknown (255)
         self.n_lc = n_lc
         c = [base, base * 2, base * 4, base * 8]
         self.enc = nn.ModuleList([block(n_num + emb, c[0]), block(c[0], c[1]), block(c[1], c[2])])
-        self.mid = block(c[2], c[3])
+        self.mid = block(c[2], c[3], drop)
         self.up = nn.ModuleList([nn.ConvTranspose2d(c[3], c[2], 2, 2), nn.ConvTranspose2d(c[2], c[1], 2, 2),
                                  nn.ConvTranspose2d(c[1], c[0], 2, 2)])
-        self.dec = nn.ModuleList([block(c[2] * 2, c[2]), block(c[1] * 2, c[1]), block(c[0] * 2, c[0])])
+        self.dec = nn.ModuleList([block(c[2] * 2, c[2], drop), block(c[1] * 2, c[1], drop), block(c[0] * 2, c[0])])
         self.out = nn.Conv2d(c[0], 1, 1)
 
     def forward(self, x, lc):
@@ -81,7 +101,16 @@ def augment(x, lc, y, m):
 
 
 @torch.no_grad()
-def evaluate(model, data, dev, mu, sd, bs=256):
+def ema_update(ema, model, step, decay):
+    d = min(decay, (1 + step) / (10 + step))                        # warm-up: early weights are not averaged with the random init
+    for pe, p in zip(ema.parameters(), model.parameters()):
+        pe.mul_(d).add_(p.detach(), alpha=1 - d)
+    for be, b in zip(ema.buffers(), model.buffers()):               # BatchNorm statistics are copied, not averaged
+        be.copy_(b)
+
+
+@torch.no_grad()
+def evaluate(model, data, off, dev, mu, sd, bs=256):
     X, L, Y, M, C = data
     model.eval()
     per = {}
@@ -90,7 +119,8 @@ def evaluate(model, data, dev, mu, sd, bs=256):
         lc = torch.from_numpy(L[i:i + bs]).to(dev)
         y = torch.from_numpy(Y[i:i + bs]).to(dev)
         m = torch.from_numpy(M[i:i + bs]).to(dev).bool()
-        p = model(x, lc) * sd + mu
+        o = torch.from_numpy(off[i:i + bs]).to(dev)
+        p = model(x, lc) * sd + mu + o
         for c in np.unique(C[i:i + bs]):
             k = torch.from_numpy(C[i:i + bs] == c).to(dev)
             e = (p[k] - y[k])[m[k]].double()
@@ -104,17 +134,22 @@ def evaluate(model, data, dev, mu, sd, bs=256):
     for c, s in per.items():
         v = s[4] / s[2] - (s[3] / s[2]) ** 2
         rows.append({"city": c, "MAE": s[1] / s[2], "RMSE": np.sqrt(s[0] / s[2]), "R2": 1 - (s[0] / s[2]) / v if v > 0 else np.nan})
-    return {"MAE": mae, "RMSE": float(np.sqrt(mse)), "R2": 1 - mse / var}, pd.DataFrame(rows).sort_values("city")
+    per = pd.DataFrame(rows).sort_values("city")
+    return {"MAE": mae, "RMSE": float(np.sqrt(mse)), "R2_pooled": 1 - mse / var, "R2_city": float(per["R2"].mean())}, per
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--patches", default="pre_processing/patches")
     ap.add_argument("--out", default="data/unet_run")
-    ap.add_argument("--epochs", type=int, default=30)
+    ap.add_argument("--target", default="anomaly", choices=["anomaly", "absolute"])
+    ap.add_argument("--epochs", type=int, default=12)
     ap.add_argument("--batch", type=int, default=64)
     ap.add_argument("--lr", type=float, default=2e-3)
-    ap.add_argument("--base", type=int, default=32, help="channels of the first U-Net level")
+    ap.add_argument("--weight-decay", type=float, default=1e-2)
+    ap.add_argument("--dropout", type=float, default=0.1)
+    ap.add_argument("--ema", type=float, default=0.998, help="decay of the weight average (0 = off)")
+    ap.add_argument("--base", type=int, default=16, help="channels of the first U-Net level")
     ap.add_argument("--max-patches", type=int, default=0, help="use only this many training patches (quick test)")
     ap.add_argument("--threads", type=int, default=0)
     a = ap.parse_args()
@@ -123,22 +158,26 @@ def main():
     meta = json.load(open(root / "meta.json"))
     dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     torch.set_num_threads(a.threads or os.cpu_count() or 1)
-    print(f"device {dev}, {torch.get_num_threads()} threads | loading patches ...", flush=True)
+    print(f"device {dev}, {torch.get_num_threads()} threads | target {a.target} | loading patches ...", flush=True)
     t0 = time.time()
     tr = load_split(root, "train", a.max_patches)
     va = load_split(root, "val", a.max_patches // 5 if a.max_patches else 0)
     print(f"train {len(tr[0]):,} patches, val {len(va[0]):,} patches, loaded in {time.time() - t0:.0f}s", flush=True)
+    anomaly = a.target == "anomaly"
+    off_tr, off_va = city_offsets(tr, anomaly), city_offsets(va, anomaly)
     ok = tr[3] == 1
-    mu, sd = float(tr[2][ok].mean()), float(tr[2][ok].std())
-    print(f"train LST mean {mu:.2f} C, std {sd:.2f} C", flush=True)
+    t = (tr[2] - off_tr)[ok]
+    mu, sd = float(t.mean()), float(t.std())
+    print(f"train target ({a.target}) mean {mu:.2f} C, std {sd:.2f} C", flush=True)
 
-    model = UNet(tr[0].shape[1], len(meta["landcover_codes"]), a.base).to(dev)
+    model = UNet(tr[0].shape[1], len(meta["landcover_codes"]), a.base, drop=a.dropout).to(dev)
+    ema = copy.deepcopy(model) if a.ema else model
     print(f"U-Net with {sum(p.numel() for p in model.parameters()) / 1e6:.2f} M parameters", flush=True)
     nb = len(tr[0]) // a.batch
-    opt = torch.optim.AdamW(model.parameters(), lr=a.lr, weight_decay=1e-4)
+    opt = torch.optim.AdamW(model.parameters(), lr=a.lr, weight_decay=a.weight_decay)
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=a.lr, total_steps=a.epochs * nb)
     rng = np.random.default_rng(0)
-    log, best = [], 1e9
+    log, best, step = [], 1e9, 0
     for ep in range(1, a.epochs + 1):
         model.train()
         t0 = time.time()
@@ -148,7 +187,7 @@ def main():
             i = np.sort(perm[b * a.batch:(b + 1) * a.batch])
             x = torch.from_numpy(tr[0][i]).to(dev).float().clamp(-CLIP, CLIP)
             lc = torch.from_numpy(tr[1][i]).to(dev)
-            y = torch.from_numpy(tr[2][i]).to(dev)
+            y = torch.from_numpy(tr[2][i]).to(dev) - torch.from_numpy(off_tr[i]).to(dev)
             m = torch.from_numpy(tr[3][i]).to(dev)
             x, lc, y, m = augment(x, lc, y, m)
             m = m.bool()
@@ -157,23 +196,26 @@ def main():
             loss.backward()
             opt.step()
             sched.step()
+            step += 1
+            if a.ema:
+                ema_update(ema, model, step, a.ema)
             tot += float(loss)
             cnt += 1
             if (b + 1) % 50 == 0 or b + 1 == nb:
                 print(f"\r  epoch {ep}/{a.epochs}  batch {b + 1}/{nb}  loss {tot / cnt:.4f}  {time.time() - t0:.0f}s", end="", flush=True)
-        met, per = evaluate(model, va, dev, mu, sd)
+        met, per = evaluate(ema, va, off_va, dev, mu, sd)
         met.update({"epoch": ep, "train_loss": tot / cnt, "seconds": round(time.time() - t0)})
         log.append(met)
         pd.DataFrame(log).to_csv(out / "metrics.csv", index=False)
         flag = ""
         if met["MAE"] < best:
             best = met["MAE"]
-            torch.save({"model": model.state_dict(), "mu": mu, "sd": sd, "features": meta["features"],
+            torch.save({"model": ema.state_dict(), "mu": mu, "sd": sd, "features": meta["features"], "target": a.target,
                         "landcover_codes": meta["landcover_codes"], "base": a.base}, out / "best.pt")
             per.round(3).to_csv(out / "val_per_city.csv", index=False)
             flag = "  <- best"
         print(f"\r  epoch {ep}/{a.epochs}  loss {tot / cnt:.4f} | val MAE {met['MAE']:.2f} C  RMSE {met['RMSE']:.2f} C  "
-              f"R2 {met['R2']:.3f} | {met['seconds']}s{flag}", flush=True)
+              f"R2 per city {met['R2_city']:.3f} | {met['seconds']}s{flag}", flush=True)
     print(f"\nbest val MAE {best:.2f} C -> {out / 'best.pt'}; per-city scores in {out / 'val_per_city.csv'}")
 
 

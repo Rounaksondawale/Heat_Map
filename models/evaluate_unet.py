@@ -114,6 +114,7 @@ def main():
     model.load_state_dict(ck["model"])
     model.eval()
     mu, sd, codes = ck["mu"], ck["sd"], ck["landcover_codes"]
+    anomaly = ck.get("target", "absolute") == "anomaly"
     files = sorted((root / a.split).glob("*.npz"))
     if a.cities:
         files = [f for f in files if f.stem in a.cities]
@@ -127,6 +128,8 @@ def main():
         d = np.load(f)
         y, m = d["y"], (d["mask"] == 1) & (d["y"] > 0) & (d["y"] < 75)
         p = predict(model, d["X"], d["lc"], dev, mu, sd)
+        if anomaly:
+            p = p + float(y[m].mean())      # the model predicts the anomaly; add the city's true mean back (only the pattern is scored)
         r = {"city": f.stem, **city_metrics(y[m], p[m], mu, a.hot_share)}
         rows.append(r)
         e = (p - y)[m].astype("float64")
@@ -157,7 +160,8 @@ def main():
     print("\n" + t[cols].round(2).to_string())
     var = syy / n - (sy / n) ** 2
     print(f"\nPOOLED over all cities: MAE {sae / n:.2f} C | RMSE {np.sqrt(sse / n):.2f} C | R2 {1 - sse / n / var:.3f} "
-          f"(includes hot-vs-cool differences between cities)")
+          + ("(each city's true mean was added back, so this is NOT comparable with an absolute-target run; use the per-city scores)"
+             if anomaly else "(includes hot-vs-cool differences between cities)"))
     print(f"INSIDE a city (mean of cities): R2_within {t['R2_within'].mean():.2f} (median {t['R2_within'].median():.2f}) | "
           f"R2_anomaly {t['R2_anomaly'].mean():.2f} | spearman {t['spearman'].mean():.2f} | skill vs city-mean guess {t['skill'].mean():.2f}")
     print(f"HOTSPOTS (hottest {a.hot_share:.0%} of each city): AUC {t['hot_AUC'].mean():.2f} | F1 {t['hot_F1'].mean():.2f} | "
