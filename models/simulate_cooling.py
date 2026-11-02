@@ -39,7 +39,7 @@ RES, WATER, PIXEL_HA = 30, 80, 0.09
 EDIT = ("NDVI", "NDBI", "MNDWI", "ALBEDO", "LANDCOVER")
 
 
-def find_hotspot(lst, valid, n, ring):
+def find_hotspot(lst, valid, n, ring, built=None, min_built=0.0):
     """Top-left (row, col) of the n x n block whose mean LST is highest above the mean of its surrounding ring."""
     H, W = lst.shape
     integral = lambda a: np.pad(a.cumsum(0).cumsum(1), ((1, 0), (1, 0)))   # noqa: E731
@@ -53,6 +53,8 @@ def find_hotspot(lst, valid, n, ring):
     sb, cb = box(sv, ii - ring, jj - ring, big), box(cv, ii - ring, jj - ring, big)
     cr = cb - cw
     ok = (cw >= 0.8 * n * n) & (cr >= 0.6 * (big * big - n * n))
+    if built is not None and min_built > 0:                       # only blocks that are (densely) built up
+        ok &= box(integral(np.nan_to_num(built).astype("float64")), ii, jj, n) >= min_built * n * n
     gap = np.where(ok, sw / np.maximum(cw, 1) - (sb - sw) / np.maximum(cr, 1), -np.inf)
     if not np.isfinite(gap.max()):
         raise SystemExit("no block with enough valid pixels; use --box")
@@ -159,6 +161,8 @@ def main():
     ap.add_argument("--auto", type=int, default=0, help="find the strongest hotspot of N x N pixels (30 m each)")
     ap.add_argument("--box", type=int, nargs=4, metavar=("R0", "R1", "C0", "C1"), help="rows R0:R1, columns C0:C1 of the city grid")
     ap.add_argument("--ring", type=int, default=30, help="width of the neighbour ring in pixels (30 = 900 m)")
+    ap.add_argument("--min-built", type=float, default=0.0,
+                    help="with --auto: only blocks whose mean built fraction is at least this (0.4 finds dense urban hotspots, where cool roofs apply)")
     ap.add_argument("--run", default="data/unet_run2", help="folder with best.pt")
     ap.add_argument("--grids", default="pre_processing/grids")
     ap.add_argument("--patches", default="pre_processing/patches", help="only meta.json (feature mean/std) is read")
@@ -183,7 +187,7 @@ def main():
     valid = np.isfinite(lst) & (lc_full != WATER)
     H, W = lst.shape
     if a.auto:
-        r0, c0 = find_hotspot(lst, valid, a.auto, a.ring)
+        r0, c0 = find_hotspot(lst, valid, a.auto, a.ring, gf["GHSL_BUILT_FRAC"].values, a.min_built)
         r1, c1 = r0 + a.auto, c0 + a.auto
         how = "found automatically as the strongest hotspot compared with its ring"
     else:
@@ -272,6 +276,10 @@ def main():
     print(f"\nTo bring the area down to its neighbours' temperature (model's view, predicted gap {pred_gap:+.1f} C):")
     for tag, label, n in (("veg", "vegetation alone", len(sim.idx_g)), ("roof", "cool roofs alone", len(sim.idx_r)),
                           ("both", "both together", None)):
+        if tag == "roof" and n < 30:
+            print(f"  {label}: not applicable here, only {n} built pixels ({n * PIXEL_HA:.1f} ha) in this area "
+                  f"(--auto N --min-built 0.4 looks for a dense urban hotspot)")
+            continue
         dose = dose_for(doses, t[f"{tag}_gap_left"].values) if pred_gap > 0 else 0.0
         if dose is None:
             left = t[f"{tag}_gap_left"].iloc[-1]
