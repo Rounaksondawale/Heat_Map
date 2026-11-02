@@ -305,12 +305,13 @@ def main():
     from matplotlib.patches import Rectangle
     fig, ax = plt.subplots(1, 3, figsize=(18, 5.2))
     lo, hi = np.nanpercentile(lst_c[okl], [2, 98])
-    for a_, g, ttl in ((ax[0], np.where(okl, lst_c, np.nan), "observed LST (C)"), (ax[1], np.where(sim.ok, p0, np.nan), "model: predicted (C; relative to the city mean for an anomaly model)")):
+    for a_, g, ttl in ((ax[0], np.where(okl, lst_c, np.nan), "observed LST (C)"), (ax[1], np.where(sim.ok, p0, np.nan), "model: predicted (C, vs city mean)")):
         im = a_.imshow(g, cmap="inferno", vmin=lo if a_ is ax[0] else None, vmax=hi if a_ is ax[0] else None)
         a_.add_patch(Rectangle((c0 - C0 - .5, r0 - R0 - .5), c1 - c0, r1 - r0, fill=False, ec="cyan", lw=2))
         b0, b1 = bs
         a_.add_patch(Rectangle((b1.start - .5, b0.start - .5), b1.stop - b1.start, b0.stop - b0.start, fill=False, ec="white", lw=1.2, ls="--"))
-        a_.set_title(f"{a.city}: {ttl}; cyan = area, dashed = ring")
+        a_.set_title(f"{a.city}: {ttl}")
+        a_.set_xlabel("cyan = area, dashed = neighbour ring")
         a_.set_xticks([])
         a_.set_yticks([])
         plt.colorbar(im, ax=a_, shrink=0.7)
