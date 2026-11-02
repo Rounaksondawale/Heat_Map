@@ -12,33 +12,38 @@ three tools: a **hotspot finder**, a **"what is driving this heat?" explainer** 
 > *or* nearly all its roofs are made reflective, *or* a bit of both (35 % of each).
 > About 2.4 °C of the observed gap is heat our data cannot explain (traffic, industry, air conditioning...), and the tool says so out loud.
 
+![How much change cools a hotspot down to its surroundings](docs/fig_cooling_curves.png)
+
 | | |
 |---|---|
 | 🛰️ **50 cities**, 30 m pixels | about 89 million pixels, 46 features each |
-| 🎯 **R² 0.75** inside the city | on 10 cities the model never saw |
+| 🎯 **R² 0.74** inside the city | on 10 cities the model never saw |
 | 🔎 **Hotspot AUC 0.93** | hot pixels ranked above cool ones |
 | 🌳 **Cooling doses** | "how much green closes the gap?" for any area you pick |
 
 ## Three tools
 
-**1. Where are the hotspots?** `models/hotspot_report.py`
+### 1. Where are the hotspots? `models/hotspot_report.py`
 The model predicts the temperature of every pixel, and Getis-Ord Gi\* flags blocks that are *significantly* hotter than the rest of the
 city. No "top 10 %" quota: some cities have many hotspots, some have none.
 
-**2. What is driving them?** `models/hotspot_report.py`, `models/group_importance.py`
+![Delhi: observed and predicted temperature around a hotspot](docs/fig_delhi_map.png)
+
+### 2. What is driving them? `models/hotspot_report.py`, `models/group_importance.py`
 Features are grouped (vegetation, built-up, albedo, water, terrain, land cover). For each hotspot we swap one group at a time for its
 neighbours' average and ask the model again, which gives each group's exact share of the extra heat (Shapley values), in °C.
 
-**3. What would cool it down?** `models/simulate_cooling.py`
+![Drivers of Delhi's biggest hotspot](docs/fig_delhi_drivers.png)
+
+### 3. What would cool it down? `models/simulate_cooling.py`
 Pick an area (draw a box or let it find the worst one). The simulator converts a growing share of it to tree cover and/or reflective roofs,
-recomputes every neighbourhood feature, re-predicts, and tells you the dose at which the area is as cool as its surroundings.
+recomputes every neighbourhood feature, re-predicts, and tells you the dose at which the area is as cool as its surroundings
+(the graph at the top).
 
 ```
 python models/hotspot_report.py --city Delhi
 python models/simulate_cooling.py --city Delhi --auto 20 --min-built 0.4
 ```
-
-## More examples
 
 | Area | Hotter than neighbours by | What closes the gap (model's view) |
 |---|---|---|
@@ -53,31 +58,123 @@ Coimbatore), on usable pixels, with each city's mean temperature given (the mode
 
 | | First model | Final model |
 |---|---|---|
-| R² inside the city | 0.54 | **0.75** |
+| R² inside the city | 0.54 | **0.74** |
 | Rank correlation inside the city | 0.78 | **0.86** |
 | Hotspot AUC / F1 | 0.88 / 0.50 | **0.93 / 0.60** |
 | Cities worse than "every pixel = city average" | 1 | **0** |
+
+![Three trained models on the same validation pixels](docs/fig_model_comparison.png)
 
 ### The plot twist
 
 Our first U-Net scored a shiny R² of 0.85 and we nearly stopped there. Then we scored it *inside* each city, and Kolkata turned out
 **worse than guessing the city average**, with Bengaluru and Bhubaneswar barely better. Most of that 0.85 was just "Jaipur is hotter than
 Dehradun". Chasing it down led to the changes that mattered: giving the model each feature *relative to its own city*, masking pixels with
-suspiciously few satellite passes, and a larger network. Those fixed all three cities. (We did not run the ablation that separates the three
-changes, so we can't say which one did the most.)
+suspiciously few satellite passes, and a larger network. Those fixed all three cities, although two strong ones (Coimbatore, Dehradun) slipped a little.
+(We did not run the ablation that separates the three changes, so we can't say which one did the most.)
+
+![Per-city R² of the first and final model](docs/fig_per_city_r2.png)
 
 ### Did the model just make up the vegetation effect?
 
 We checked. For +0.1 NDVI the model predicts a cooling of 1.0 °C in Delhi and 2.0 °C in Jaipur; the satellite data itself, compared across
 places with the same land cover, built-up share, elevation and distance to water, shows 0.8 and 1.8 °C. Same direction, same range. The model
-is 10 to 30 % steeper, so read the doses as the optimistic end. It leans on vegetation heavily: shuffling that group drops R² by 0.89, against
-0.39 for water, 0.31 for built-up and under 0.1 for the rest.
+is 10 to 30 % steeper, so read the doses as the optimistic end.
+
+![Model and satellite data agree on the vegetation effect](docs/fig_vegetation_check.png)
+
+It also leans on vegetation heavily: shuffling that group of features drops R² by 0.89, against 0.39 for water, 0.31 for built-up and under 0.1 for the rest.
+
+![What the model relies on](docs/fig_group_importance.png)
+
+## Full metrics
+
+<details open>
+<summary><b>Final model, city by city</b> (10 held-out cities)</summary>
+
+R² inside the city is shown twice: as scored, and with each city's constant offset removed. "Hot" columns use the hottest 10 % of each city.
+
+| City | MAE (°C) | R² inside | R² offset removed | Spearman | Hot AUC | Hot F1 | Bias on hot pixels (°C) |
+|---|---|---|---|---|---|---|---|
+| Amritsar | 0.54 | 0.77 | 0.77 | 0.88 | 0.97 | 0.76 | -0.52 |
+| Bengaluru | 0.90 | 0.75 | 0.76 | 0.86 | 0.93 | 0.60 | -0.53 |
+| Bhubaneswar | 1.00 | 0.70 | 0.73 | 0.90 | 0.93 | 0.58 | -0.18 |
+| Chennai | 0.93 | 0.76 | 0.79 | 0.85 | 0.90 | 0.54 | -1.21 |
+| Coimbatore | 1.74 | 0.68 | 0.75 | 0.91 | 0.95 | 0.65 | -1.09 |
+| Dehradun | 1.96 | 0.67 | 0.69 | 0.86 | 0.94 | 0.61 | -3.99 |
+| Jaipur | 0.98 | 0.78 | 0.79 | 0.89 | 0.95 | 0.59 | -1.07 |
+| Kolkata | 0.82 | 0.78 | 0.79 | 0.91 | 0.95 | 0.62 | -1.87 |
+| Lucknow | 1.23 | 0.64 | 0.64 | 0.74 | 0.92 | 0.56 | -1.83 |
+| Nagpur | 1.06 | 0.71 | 0.74 | 0.83 | 0.92 | 0.54 | -1.18 |
+| **Mean** | **1.12** | **0.72** | **0.74** | **0.86** | **0.93** | **0.60** | **-1.35** |
+
+MAE is with the city's mean temperature given, so it measures the *pattern* error and is not an absolute-temperature error. The best training
+epoch was picked on these same 10 cities, so every score here is slightly optimistic.
+
+</details>
+
+<details>
+<summary><b>All trained models, same validation pixels</b></summary>
+
+| Model | Target | Inputs | Epochs | R² inside (offset removed) | Spearman | Hot AUC | Hot F1 | Bias on hot pixels | Cities worse than the city mean |
+|---|---|---|---|---|---|---|---|---|---|
+| First model | absolute temperature | 45 | 30 | 0.54 | 0.78 | 0.88 | 0.50 | -1.45 °C | 1 |
+| Smaller anomaly model | anomaly | 45 | 12 | 0.53 | 0.74 | 0.89 | 0.47 | -2.45 °C | 0 |
+| **Final model** | anomaly | 51 | 7 | **0.74** | **0.86** | **0.93** | **0.60** | **-1.35 °C** | **0** |
+
+All three were evaluated on the same patches by `models/compare_runs.py`. The older models use the first 45 of the 51 input channels.
+
+</details>
+
+<details>
+<summary><b>Error by land cover</b> (final model)</summary>
+
+| Land cover | Pixels | MAE (°C) | Bias (°C) |
+|---|---|---|---|
+| Cropland | 6.74 M | 0.92 | +0.04 |
+| Tree cover | 4.98 M | 1.37 | +0.43 |
+| Built-up | 3.40 M | 1.12 | -0.07 |
+| Grassland | 2.13 M | 1.16 | +0.39 |
+| Shrubland | 0.36 M | 1.06 | +0.19 |
+| Bare / sparse | 0.18 M | 2.21 | -0.83 |
+| Wetland | 0.02 M | 1.05 | +0.24 |
+
+</details>
+
+<details>
+<summary><b>Hotspot detection quality</b> (Gi* z of at least 2.58, clusters at least 1 °C above their neighbours)</summary>
+
+| | Delhi | Jaipur |
+|---|---|---|
+| Blocks flagged (600 m blocks) | 11.1 % | 18.9 % |
+| Clusters kept after the 1 °C filter | 7 (3.7 % of the city) | 5 (16.0 % of the city) |
+| Overlap with hotspots found on the observed temperature: precision / recall / IoU | 0.57 / 0.50 / 0.36 | 0.75 / 0.78 / 0.62 |
+| Correlation of block means, observed vs predicted | 0.85 | 0.91 |
+
+Jaipur's flagged area is dominated by two very large zones (the dry outskirts), so it reads as hot regions more than compact hotspots.
+
+</details>
+
+<details>
+<summary><b>Data and training facts</b></summary>
+
+| | |
+|---|---|
+| Cities | 50, each a 40 km box at 30 m (about 1,350 x 1,350 pixels; about 89 million pixels in total) |
+| Training table | 10.08 M rows stacked, 9.25 M after cleaning (water and invalid pixels dropped); 42 cities OK, 8 with warnings, 0 bad in the quality audit |
+| Features | 46 per pixel, plus 6 city-relative copies in the patches: 51 numeric channels and a land-cover class |
+| Patches | 64 x 64 pixels (1.9 km); about 21,000 for training (about 15 % overlap) and about 4,300 for validation (no overlap); 40 training cities, 10 validation cities |
+| Model | U-Net, three down-sampling levels, about 2 M parameters, learned land-cover embedding |
+| Training | `--base 32 --epochs 7`, batch 64, AdamW with one-cycle learning rate, dropout, weight decay, running average of the weights, half of the patches per epoch, random rotations and flips; on a 4-core CPU |
+| Target | pixel temperature minus its city's mean (the "anomaly"), loss on usable pixels only |
+
+</details>
 
 ## The honest part
 
-- **Scores are slightly flattering.** The 10 cities also picked the best training epoch. Think "about 0.7", not "0.75".
+- **Scores are slightly flattering.** The 10 cities also picked the best training epoch. Think "about 0.7", not "0.74".
 - **It predicts patterns, not absolute temperature.** It needs the city's average temperature to be supplied, and it needs the whole city grid.
-- **Peaks are underestimated** by about 1.35 °C on average. The ranking is good, the hottest values come out low.
+- **Peaks are underestimated** by about 1.35 °C on average (4 °C in Dehradun). The ranking is good, the hottest values come out low.
 - **Drivers and doses are the model's attribution, not proof of cause.** Vegetation, built-up share and albedo move together, and real planting
   comes as parks and tree rows, not scattered pixels.
 - **Some heat is outside our data.** It shows up as the "not explained" gap.
@@ -93,17 +190,13 @@ Landsat 8/9, DEM, WorldCover, GHSL, weather  ->  extraction/       50 city grids
                                              ->  models/           U-Net, evaluation, hotspots, drivers, simulator
 ```
 
-- **Data.** 50 cities, each a 40 km box at 30 m (about 1,350 x 1,350 pixels). Target: mean land surface temperature of the clearest Landsat 8/9
-  passes in March to May 2022-2025, cloud-masked. Public sources: Landsat Collection 2 Level-2, Copernicus DEM and ESA WorldCover (via Microsoft
-  Planetary Computer), JRC GHSL (building height, built-up fraction, population), Open-Meteo weather (tables only).
-- **Features.** 46 per pixel: NDVI, NDBI, MNDWI, albedo, elevation, slope, land cover, building height, built-up fraction, population, distance to
-  water and green space, 150 m / 450 m neighbourhood means, and 28 "surroundings" features (window means from 90 m to 2 km, local variation).
-  The patches add six city-relative copies, for 51 numeric channels plus the land-cover class.
-- **Patches.** 64 x 64 pixels (1.9 km), about 15 % overlap in training and none in validation. Cities are split whole (40 train, 10 validation),
-  never by patch. Statistics come from training cities only. Water, missing values and few-pass pixels are masked out of the loss.
-- **Model.** U-Net, three down-sampling levels, about 2 M parameters, a learned embedding for land cover. It predicts each pixel's temperature
-  minus its city's mean. Smooth-L1 loss on usable pixels, AdamW with weight decay, dropout, an averaged copy of the weights, random rotations and
-  flips, features clipped at +-10 standard deviations. Trained with `--base 32 --epochs 7` on a 4-core CPU.
+- **Data.** Target: mean land surface temperature of the clearest Landsat 8/9 passes in March to May 2022-2025, cloud-masked. Public sources:
+  Landsat Collection 2 Level-2, Copernicus DEM and ESA WorldCover (via Microsoft Planetary Computer), JRC GHSL (building height, built-up
+  fraction, population), Open-Meteo weather (tables only).
+- **Features.** NDVI, NDBI, MNDWI, albedo, elevation, slope, land cover, building height, built-up fraction, population, distance to water and
+  green space, 150 m / 450 m neighbourhood means, and 28 "surroundings" features (window means from 90 m to 2 km, local variation).
+- **Patches.** Cities are split whole, never by patch. Statistics come from training cities only. Water, missing values and few-pass pixels are
+  masked out of the loss; features are clipped at +-10 standard deviations.
 - **Data findings.** A tile-offset bug in the GHSL reader left several cities without building data (fixed). Each pixel averages a different set of
   cloud-free days; blocks with fewer passes are fine, but tiny few-pass groups (Srinagar, Hyderabad, Jammu) are cold outliers, so only those are masked.
 
@@ -152,7 +245,11 @@ extraction/       data pipeline: build_dataset, repair_dataset, finalize_dataset
 pre_processing/   export_city_grids, make_patches, check_patches, pack_patches
 models/           train_unet, evaluate_unet, compare_runs, hotspot_report, group_importance, simulate_cooling
 notebooks/        data_audit.ipynb
+docs/             the figures used in this README
 ```
+
+The charts in `docs/` were redrawn from the numbers printed by our own evaluation, comparison, importance and simulator runs.
+The Delhi map is a crop of a real `simulate_cooling.py` figure.
 
 </details>
 
