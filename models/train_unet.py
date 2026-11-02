@@ -31,12 +31,18 @@ import torch.nn.functional as F
 
 
 def load_split(root, split, max_patches=0, seed=0):
-    X, L, Y, M, C = [], [], [], [], []
-    for p in sorted((root / split).glob("*.npz")):
-        d = np.load(p)
-        X.append(d["X"]); L.append(d["lc"]); Y.append(d["y"]); M.append(d["mask"])
-        C += [p.stem] * len(d["X"])
-    X, L, Y, M, C = np.concatenate(X), np.concatenate(L), np.concatenate(Y), np.concatenate(M), np.array(C)
+    packed = root / "packed" / f"{split}_X.npy"
+    if packed.exists():                     # pre_processing/pack_patches.py: features stay on disk, only a few GB of RAM needed
+        X = np.load(packed, mmap_mode="c")
+        r = np.load(root / "packed" / f"{split}_rest.npz")
+        L, Y, M, C = r["lc"], r["y"], r["mask"], r["city"]
+    else:
+        X, L, Y, M, C = [], [], [], [], []
+        for p in sorted((root / split).glob("*.npz")):
+            d = np.load(p)
+            X.append(d["X"]); L.append(d["lc"]); Y.append(d["y"]); M.append(d["mask"])
+            C += [p.stem] * len(d["X"])
+        X, L, Y, M, C = np.concatenate(X), np.concatenate(L), np.concatenate(Y), np.concatenate(M), np.array(C)
     M = M * ((Y > 0) & (Y < 75)).astype("uint8")                    # drop implausible LST pixels from the loss (e.g. Kochi > 75 C)
     if max_patches and len(X) > max_patches:
         i = np.sort(np.random.default_rng(seed).choice(len(X), max_patches, replace=False))
