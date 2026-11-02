@@ -150,6 +150,8 @@ def main():
     ap.add_argument("--out", default="data/unet_run")
     ap.add_argument("--target", default="anomaly", choices=["anomaly", "absolute"])
     ap.add_argument("--epochs", type=int, default=12)
+    ap.add_argument("--epoch-frac", type=float, default=0.5, help="share of the training patches (random) used in each epoch")
+    ap.add_argument("--val-stride", type=int, default=2, help="validate on every n-th validation patch (evaluate_unet.py scores all)")
     ap.add_argument("--batch", type=int, default=64)
     ap.add_argument("--lr", type=float, default=2e-3)
     ap.add_argument("--weight-decay", type=float, default=1e-2)
@@ -169,6 +171,8 @@ def main():
     tr = load_split(root, "train", a.max_patches)
     va = load_split(root, "val", a.max_patches // 5 if a.max_patches else 0)
     print(f"train {len(tr[0]):,} patches, val {len(va[0]):,} patches, loaded in {time.time() - t0:.0f}s", flush=True)
+    if a.val_stride > 1:
+        va = tuple(t[::a.val_stride] for t in va)
     anomaly = a.target == "anomaly"
     off_tr, off_va = city_offsets(tr, anomaly), city_offsets(va, anomaly)
     ok = tr[3] == 1
@@ -179,7 +183,8 @@ def main():
     model = UNet(tr[0].shape[1], len(meta["landcover_codes"]), a.base, drop=a.dropout).to(dev)
     ema = copy.deepcopy(model) if a.ema else model
     print(f"U-Net with {sum(p.numel() for p in model.parameters()) / 1e6:.2f} M parameters", flush=True)
-    nb = len(tr[0]) // a.batch
+    nb = int(len(tr[0]) * a.epoch_frac) // a.batch
+    print(f"{nb} batches of {a.batch} per epoch ({a.epoch_frac:.0%} of the training patches), validating on {len(va[0]):,} patches", flush=True)
     opt = torch.optim.AdamW(model.parameters(), lr=a.lr, weight_decay=a.weight_decay)
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=a.lr, total_steps=a.epochs * nb)
     rng = np.random.default_rng(0)
