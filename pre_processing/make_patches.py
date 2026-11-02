@@ -11,7 +11,9 @@ Reads <grids>/<City>_features.nc + <City>_temp.nc (export_city_grids.py) and wri
     lc    (N, 64, 64)    uint8    LANDCOVER class index (categorical; codes in meta.json)
     y     (N, 64, 64)    float32  LST in degrees C (not normalised)
     mask  (N, 64, 64)    uint8    1 = usable pixel: LST and every feature present, not water, and at least --min-pass x the city's
-                                  median number of satellite passes (few-pass pixels are often cloud / snow leftovers).
+                                  median number of satellite passes (few-pass pixels are often cloud / snow leftovers). Only done
+                                  where those pixels are a small share (--max-few-share) of the city: a big block of fewer passes is
+                                  just a part of the city with fewer overpasses and its LST is fine.
                                   Compute the loss on mask == 1 only.
     pos   (N, 2)         int32    (row, col) of each patch's top-left pixel in the city grid
 plus <out>/meta.json (feature names, mean/std, split, patch size) and <out>/patch_summary.csv.
@@ -72,16 +74,19 @@ def starts(n, size, stride):
 
 
 def cut(args):
-    grids, city, split, out, size, stride, min_valid, mean, std, min_pass = args
+    grids, city, split, out, size, stride, min_valid, mean, std, min_pass, max_few = args
     names, X, lc, y, n = load(Path(grids), city)
     mean, std = np.array(mean, "float32"), np.array(std, "float32")
     base_ok = (lc != WATER) & np.isfinite(X).all(0)
     ok = np.isfinite(y) & base_ok
-    few = float("nan")                                          # share of otherwise usable pixels dropped for too few passes
+    few = float("nan")                                          # share of otherwise usable pixels with too few passes
+    masked = False
     if n is not None:
         keep = np.isfinite(n) & (n >= min_pass * float(np.median(n[ok & np.isfinite(n)])))
         few = float((ok & ~keep).sum() / max(ok.sum(), 1) * 100)
-        ok &= keep
+        if few <= max_few:
+            ok &= keep
+            masked = True
     Z = np.where(np.isfinite(X), (X - mean[:, None, None]) / std[:, None, None], 0).astype("float16")
     rel = []
     for v in REL_VARS:
@@ -104,13 +109,13 @@ def cut(args):
             ms.append(m.astype("uint8"))
             ps.append((r, c))
     if not xs:
-        return {"city": city, "split": split, "patches": 0, "few_pass_%": few}
+        return {"city": city, "split": split, "patches": 0, "few_pass_%": few, "few_pass_masked": masked}
     d = Path(out) / split
     d.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(d / f"{city}.npz", X=np.stack(xs), lc=np.stack(ls), y=np.stack(ys), mask=np.stack(ms),
                         pos=np.array(ps, "int32"))
     return {"city": city, "split": split, "patches": len(xs), "usable_%": round(float(np.mean([m.mean() for m in ms]) * 100), 1),
-            "few_pass_%": round(few, 1)}
+            "few_pass_%": round(few, 1), "few_pass_masked": masked}
 
 
 def main():
@@ -121,6 +126,8 @@ def main():
     ap.add_argument("--overlap", type=float, default=0.15, help="training-patch overlap (validation uses none)")
     ap.add_argument("--min-valid", type=float, default=0.5, help="drop patches with a smaller usable share")
     ap.add_argument("--min-pass", type=float, default=0.6, help="mask pixels with fewer satellite passes than this x the city median (0 = off)")
+    ap.add_argument("--max-few-share", type=float, default=3.0,
+                    help="only mask few-pass pixels in cities where they are at most this percent of the usable pixels")
     ap.add_argument("--val-cities", nargs="*", default=VAL_DEFAULT)
     ap.add_argument("--workers", type=int, default=0)
     a = ap.parse_args()
@@ -143,19 +150,19 @@ def main():
         n = sum(p[3] for p in parts)
         mean = sum(p[1] for p in parts) / n
         std = np.sqrt(np.maximum(sum(p[2] for p in parts) / n - mean ** 2, 0)) + 1e-6
-        jobs = [(str(grids), c, "train", str(out), a.size, stride, a.min_valid, mean.tolist(), std.tolist(), a.min_pass) for c in train] + \
-               [(str(grids), c, "val", str(out), a.size, a.size, a.min_valid, mean.tolist(), std.tolist(), a.min_pass) for c in val]
+        jobs = [(str(grids), c, "train", str(out), a.size, stride, a.min_valid, mean.tolist(), std.tolist(), a.min_pass, a.max_few_share) for c in train] + \
+               [(str(grids), c, "val", str(out), a.size, a.size, a.min_valid, mean.tolist(), std.tolist(), a.min_pass, a.max_few_share) for c in val]
         rows = []
         for r in ex.map(cut, jobs):
             rows.append(r)
-            print(f"  {r['city']} ({r['split']}): {r['patches']} patches, {r['few_pass_%']}% of usable pixels masked for few passes", flush=True)
+            print(f"  {r['city']} ({r['split']}): {r['patches']} patches, {r['few_pass_%']}% few-pass pixels, {'masked' if r['few_pass_masked'] else 'kept'}", flush=True)
     out.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(rows).to_csv(out / "patch_summary.csv", index=False)
     rel_names = [f"{v}_rel" for v in REL_VARS]
     if pd.DataFrame(rows)["few_pass_%"].isna().any():
         print("WARNING: some grids have no n_obs, so no few-pass masking was done; re-run export_city_grids.py --force")
     json.dump({"features": names + rel_names, "mean": mean.tolist() + [0.0] * len(rel_names), "std": std.tolist() + [1.0] * len(rel_names),
-               "rel": {"vars": REL_VARS, "floor": REL_FLOOR}, "min_pass": a.min_pass, "landcover_codes": LC_CODES,
+               "rel": {"vars": REL_VARS, "floor": REL_FLOOR}, "min_pass": a.min_pass, "max_few_share": a.max_few_share, "landcover_codes": LC_CODES,
                "size": a.size, "train_stride": stride, "train_cities": train, "val_cities": val},
               open(out / "meta.json", "w"), indent=1)
     s = pd.DataFrame(rows).groupby("split")["patches"].sum()
