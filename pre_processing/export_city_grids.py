@@ -6,7 +6,7 @@ Per city, two aligned full-resolution grids (every 30 m pixel of the 40 km box):
 
 For each cities/<City>/aligned.nc this writes
   <out>/<City>_features.nc   the model INPUT features only (FEATURES below, incl. the surroundings features)
-  <out>/<City>_temp.nc       one grid: LST (land surface temperature, the target)
+  <out>/<City>_temp.nc       the target grid LST (land surface temperature) and n_obs, the number of satellite passes behind each pixel
 Both have the same (y, x) coordinates as aligned.nc and the training table, so they line up pixel for pixel.
 No leakage columns (LST_z, SUHI, HOTSPOT, ...) and no weather. <out>/grid_summary.csv lists size and feature count per city.
 """
@@ -48,7 +48,7 @@ def export(nc_path, out_dir):
     ds = ds.assign({k: v for k, v in context_grids(ds).items()})
     feats, temp = Path(out_dir) / f"{city}_features.nc", Path(out_dir) / f"{city}_temp.nc"
     _write(ds[FEATURES], feats)
-    _write(ds[["LST"]], temp)
+    _write(ds[["LST", "n_obs"]], temp)
     r = {"city": city, "grid": f"{ds.sizes['y']} x {ds.sizes['x']}", "features": len(FEATURES),
          "valid_LST_%": round(float(np.isfinite(ds["LST"].values).mean() * 100), 1),
          "size_MB": round((os.path.getsize(feats) + os.path.getsize(temp)) / 1e6, 1)}

@@ -30,7 +30,9 @@ from scipy.ndimage import distance_transform_edt, uniform_filter
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent / "extraction"))
+sys.path.insert(0, str(HERE.parent / "pre_processing"))
 from add_context_features import VARS, context_grids  # noqa: E402
+from make_patches import REL_FLOOR, city_rel  # noqa: E402
 from train_unet import CLIP, UNet  # noqa: E402
 
 RES, WATER, PIXEL_HA = 30, 80, 0.09
@@ -68,14 +70,19 @@ def run_model(model, Z, lci, dev, mu, sd):
 
 
 class Simulator:
-    def __init__(self, model, ck, meta, base, reg, box, targets, a, dev):
+    def __init__(self, model, ck, meta, base, reg, box, targets, a, dev, rel=None):
         self.model, self.dev, self.a = model, dev, a
         self.mu, self.sd, self.codes = ck["mu"], ck["sd"], ck["landcover_codes"]
         self.names = list(base)                                    # all feature names of the grid file
-        self.model_names = meta["features"]
-        self.mean = np.array(meta["mean"], "float32")[:, None, None]
-        self.std = np.array(meta["std"], "float32")[:, None, None]
-        self.std_by_name = dict(zip(self.model_names, meta["std"]))
+        self.model_names = ck["features"]                          # the model's own inputs (old and new checkpoints differ)
+        look = {n: (m, s) for n, m, s in zip(meta["features"], meta["mean"], meta["std"])}
+        missing = [n for n in self.model_names if n not in look]
+        if missing:
+            raise SystemExit(f"patches/meta.json has no normalisation for the model inputs {missing[:3]}")
+        self.mean = np.array([look[n][0] for n in self.model_names], "float32")[:, None, None]
+        self.std = np.array([look[n][1] for n in self.model_names], "float32")[:, None, None]
+        self.std_by_name = {n: look[n][1] for n in self.model_names}
+        self.rel = rel or {}                                       # name -> (source feature, city mean, city std)
         self.base, self.reg, self.box, self.targets = base, reg, box, targets
         self.shape = reg.shape
         lc = base["LANDCOVER"]
@@ -120,6 +127,8 @@ class Simulator:
         return out, int(green.sum()), int(roof.sum())
 
     def predict(self, feats):
+        for n, (v, m, s) in self.rel.items():                      # city-relative copies follow the edited features
+            feats[n] = ((feats[v] - m) / s).astype("float32")
         X = np.stack([feats[n] for n in self.model_names])
         Z = np.where(np.isfinite(X), (X - self.mean) / self.std, 0).astype("float32")
         lci = np.full(self.shape, 255, "uint8")
@@ -164,8 +173,6 @@ def main():
     dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     ck = torch.load(Path(a.run) / "best.pt", map_location=dev, weights_only=False)
     meta = json.load(open(Path(a.patches) / "meta.json"))
-    if ck["features"] != meta["features"]:
-        raise SystemExit("best.pt and patches/meta.json list different features")
     model = UNet(len(ck["features"]), len(ck["landcover_codes"]), ck["base"]).to(dev)
     model.load_state_dict(ck["model"])
     model.eval()
@@ -204,7 +211,20 @@ def main():
         raise SystemExit("no green reference pixels in this city")
     targets = {k: float(np.nanmedian(gf[k].values[tree])) for k in ("NDVI", "NDBI", "MNDWI", "ALBEDO")}
 
-    sim = Simulator(model, ck, meta, base, reg, bs, targets, a, dev)
+    # city-relative inputs (checkpoints trained on the _rel channels): the city's own mean / spread of each feature, from the unedited grid
+    rel = {}
+    rel_names = [n for n in ck["features"] if n.endswith("_rel")]
+    if rel_names:
+        numeric = [n for n in ck["features"] if not n.endswith("_rel")]
+        usable_city = np.isfinite(np.stack([gf[n].values for n in numeric])).all(0) & (lc_full != WATER)
+        gstd = dict(zip(meta["features"], meta["std"]))
+        for n in rel_names:
+            v = n[:-4]
+            m, s = city_rel(gf[v].values, usable_city, REL_FLOOR * gstd[v])
+            rel[n] = (v, m, s)
+            base[n] = ((base[v] - m) / s).astype("float32")
+
+    sim = Simulator(model, ck, meta, base, reg, bs, targets, a, dev, rel)
     f0, _, _ = sim.features(0, 0)
     drift = max(float(np.nanmax(np.abs(f0[n][bs] - base[n][bs])) / sim.std_by_name.get(n, 1.0)) for n in sim.model_names)
     p0 = sim.predict(base)
