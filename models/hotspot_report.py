@@ -183,12 +183,17 @@ def analyse(city, a, model, ck, meta, dev):
             Zs[i] += d / rel_s[n]
     shift = predict_grid(model, Zs, lci, dev, ck["mu"], ck["sd"]) + add
     model_eff = float((shift - pred)[valid].mean())
-    idx = np.flatnonzero(valid.ravel())[::7]
-    cols = ["NDVI", "NDBI", "ALBEDO", "GHSL_BUILT_FRAC", "ELEV", "DIST_WATER_m"]
-    A = np.c_[np.ones(len(idx)), np.stack([X[c].ravel()[idx] for c in cols], 1)]
-    coef = np.linalg.lstsq(A, lst.ravel()[idx], rcond=None)[0]
-    print(f"vegetation check, change in LST for +0.1 NDVI: model {model_eff:+.2f} C | regression on the satellite data "
-          f"(controlling for built-up, albedo, elevation, distance to water) {coef[1] * d:+.2f} C")
+    idx = np.flatnonzero(valid.ravel())[::5]
+    df = pd.DataFrame({"lst": lst.ravel()[idx], "ndvi": X["NDVI"].ravel()[idx], "lc": lc.ravel()[idx],
+                       "built": np.digitize(np.nan_to_num(X["GHSL_BUILT_FRAC"].ravel()[idx]), [0.1, 0.3, 0.6]),
+                       "elev": pd.qcut(X["ELEV"].ravel()[idx], 5, labels=False, duplicates="drop"),
+                       "wat": np.digitize(np.nan_to_num(X["DIST_WATER_m"].ravel()[idx], nan=5000.0), [300, 1500])})
+    slope = lambda g: np.cov(g["ndvi"], g["lst"])[0, 1] / max(g["ndvi"].var(), 1e-9)   # noqa: E731
+    parts = [(len(g), slope(g)) for _, g in df.groupby(["lc", "built", "elev", "wat"]) if len(g) >= 200]
+    strat = sum(n * s for n, s in parts) / max(sum(n for n, _ in parts), 1) if parts else float("nan")
+    print(f"vegetation check, change in LST for +0.1 NDVI: model {model_eff:+.2f} C | satellite data {slope(df) * d:+.2f} C without controls, "
+          f"{strat * d:+.2f} C within groups of equal land cover, built-up share, elevation and distance to water "
+          f"({sum(n for n, _ in parts) / len(df):.0%} of the pixels)")
 
     # ---- clusters
     rows = []
@@ -206,6 +211,8 @@ def analyse(city, a, model, ck, meta, dev):
         ring = (distance_transform_edt(~cm) <= ringpx) & ~hp & us
         if ring.sum() < 200 or (cm & us).sum() < 50:
             continue
+        if float(pred[sl][cm & us].mean()) - float(pred[sl][ring].mean()) < a.min_gap:
+            continue
         o_in, o_ring = float(lst[sl][cm & vd].mean()) if (cm & vd).any() else np.nan, float(lst[sl][ring & vd].mean()) if (ring & vd).any() else np.nan
         p_in, p_ring = float(pred[sl][cm & us].mean()), float(pred[sl][ring].mean())
         lonlat_c = lonlat(float(xs[(c0 + c1) // 2]), float(ys[(r0 + r1) // 2]), epsg)
@@ -216,6 +223,9 @@ def analyse(city, a, model, ck, meta, dev):
                "not_explained": round((o_in - o_ring) - (p_in - p_ring), 2), "mean_z": round(float(np.nanmean(zp[bm])), 2)}
         rows.append((row, sl, cm, ring, p_in, p_ring))
     rows.sort(key=lambda t: -t[0]["pred_gap"])
+    hot = np.isin(lab, [r[0]["cluster"] for r in rows])                # the map shows only the clusters that were kept
+    print(f"kept {len(rows)} clusters with a predicted gap of at least {a.min_gap:g} C to their neighbours "
+          f"({hot.sum() / max(nb, 1) * 100:.1f}% of the city's blocks)")
 
     # ---- drivers (Shapley over the feature groups) for the top clusters
     gidx = {g: [i for i, n in enumerate(names) if group_of(n) == g and n != "LANDCOVER"] for g in GROUPS}
@@ -294,7 +304,9 @@ def main():
     ap.add_argument("--grids", default="pre_processing/grids")
     ap.add_argument("--patches", default="pre_processing/patches", help="only meta.json (feature mean/std) is read")
     ap.add_argument("--block", type=int, default=20, help="block size in pixels (30 m each)")
-    ap.add_argument("--z", type=float, default=1.96, help="Gi* z-score for a hotspot (1.645 = 90%, 1.96 = 95%, 2.58 = 99%)")
+    ap.add_argument("--z", type=float, default=2.58, help="Gi* z-score for a hotspot (1.645 = 90%, 1.96 = 95%, 2.58 = 99%, 3.29 = 99.9%)")
+    ap.add_argument("--min-gap", type=float, default=1.0,
+                    help="keep only clusters whose predicted temperature is at least this many C above their neighbours")
     ap.add_argument("--min-blocks", type=int, default=2)
     ap.add_argument("--ring", type=int, default=30, help="width of the neighbour ring in pixels")
     ap.add_argument("--top", type=int, default=10, help="clusters that get a driver analysis")
