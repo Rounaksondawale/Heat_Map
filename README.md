@@ -51,6 +51,22 @@ python models/simulate_cooling.py --city Delhi --auto 20 --min-built 0.4
 | Delhi, dense 600 m block | 4.5 °C observed, 2.0 °C seen by the model | plant 45 % (15 ha), or reflective roofs on 99 % of buildings, or 35 % of each |
 | Delhi, 1.2 x 1.8 km area | 1.3 °C observed, 1.0 °C seen by the model | plant 30 % (57 ha), roofs 48 % (76 ha), or 21 % of each |
 
+## Try it: the dashboard
+
+An interactive app on top of the same model. Pick a city, **draw a rectangle on the map**, and it tells you whether the area is a
+hotspot, what drives its heat, and how much planting or reflective roofing would bring it down to the level of its neighbours. A slider lets
+you try your own mix and see the result.
+
+```bash
+pip install -r dashboard/requirements.txt        # on top of the project requirements and PyTorch
+streamlit run dashboard/app.py
+```
+
+It needs `pre_processing/grids/<City>_features.nc` and `<City>_temp.nc` for the cities you want, `pre_processing/patches/meta.json` and
+`data/unet_run3/best.pt` (paths can be changed in the sidebar). You can copy just two or three cities (about 200 MB each) to run it on a laptop.
+The first load of a city predicts the whole city and caches it in `data/dashboard_cache`; each area then takes up to a minute on a CPU
+(drivers and cooling doses). On a remote machine start it with `--server.address 0.0.0.0` and forward the port.
+
 ## How well does it work?
 
 Scored on **10 cities held out from training** (Jaipur, Lucknow, Nagpur, Chennai, Bengaluru, Kolkata, Bhubaneswar, Dehradun, Amritsar,
@@ -244,6 +260,7 @@ extraction/       data pipeline: build_dataset, repair_dataset, finalize_dataset
                   (align_data.py, get_missing_data.py and two notebooks are early single-city Pune prototypes)
 pre_processing/   export_city_grids, make_patches, check_patches, pack_patches
 models/           train_unet, evaluate_unet, compare_runs, hotspot_report, group_importance, simulate_cooling
+dashboard/        Streamlit app: app.py (interface), engine.py (computations), plots.py (charts)
 notebooks/        data_audit.ipynb
 docs/             the figures used in this README
 ```

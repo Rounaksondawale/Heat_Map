@@ -1,0 +1,5 @@
+# extra packages for the dashboard (on top of ../requirements.txt and PyTorch)
+streamlit>=1.35
+folium>=0.15
+streamlit-folium>=0.20
+pillow

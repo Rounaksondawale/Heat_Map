@@ -155,6 +155,85 @@ def dose_for(doses, gaps):
     return None
 
 
+def load_context(city, a, ck, meta):
+    """Everything about a city that does not depend on the studied area: grids in memory, valid mask, tree reference values, city-relative stats."""
+    gf = xr.open_dataset(Path(a.grids) / f"{city}_features.nc").load()
+    lst = xr.open_dataset(Path(a.grids) / f"{city}_temp.nc")["LST"].values.astype("float32")
+    lc_full = gf["LANDCOVER"].values
+    valid = np.isfinite(lst) & (lc_full != WATER)
+    # what a "green" pixel of this city looks like
+    ndvi = gf["NDVI"].values
+    tree = (lc_full == 10) & (ndvi > 0.4)
+    if tree.sum() < 500:
+        tree = (ndvi > 0.4) & (lc_full != WATER)
+    if not tree.any():
+        raise SystemExit("no green reference pixels in this city")
+    targets = {k: float(np.nanmedian(gf[k].values[tree])) for k in ("NDVI", "NDBI", "MNDWI", "ALBEDO")}
+    # city-relative inputs (checkpoints trained on the _rel channels): the city's own mean / spread of each feature, from the unedited grid
+    rel = {}
+    rel_names = [n for n in ck["features"] if n.endswith("_rel")]
+    if rel_names:
+        numeric = [n for n in ck["features"] if not n.endswith("_rel")]
+        usable_city = np.isfinite(np.stack([gf[n].values for n in numeric])).all(0) & (lc_full != WATER)
+        gstd = dict(zip(meta["features"], meta["std"]))
+        for n in rel_names:
+            v = n[:-4]
+            m, s = city_rel(gf[v].values, usable_city, REL_FLOOR * gstd[v])
+            rel[n] = (v, m, s)
+    return {"city": city, "gf": gf, "lst": lst, "lc": lc_full, "valid": valid, "targets": targets, "rel": rel,
+            "city_mean": float(lst[valid].mean())}
+
+
+def build_simulation(ctx, box, a, model, ck, meta, dev):
+    """Set up the what-if simulator for one area. box = (row0, row1, col0, col1) in city-grid pixels; `a` needs ring, max_built, roof_albedo, seed."""
+    gf, lst = ctx["gf"], ctx["lst"]
+    H, W = lst.shape
+    r0, r1, c0, c1 = box
+    r0, c0, r1, c1 = max(r0, 0), max(c0, 0), min(r1, H), min(c1, W)
+    # crop = area + ring + 34 pixels (the largest surroundings window is 67 pixels wide)
+    pad = a.ring + 34
+    R0, R1, C0, C1 = max(0, r0 - pad), min(H, r1 + pad), max(0, c0 - pad), min(W, c1 + pad)
+    sl = (slice(R0, R1), slice(C0, C1))
+    base = {n: gf[n].isel(y=sl[0], x=sl[1]).values.astype("float32") for n in gf.data_vars}
+    reg = np.zeros(base["NDVI"].shape, bool)
+    reg[r0 - R0:r1 - R0, c0 - C0:c1 - C0] = True
+    boxm = np.zeros_like(reg)
+    boxm[max(r0 - a.ring, R0) - R0:min(r1 + a.ring, R1) - R0, max(c0 - a.ring, C0) - C0:min(c1 + a.ring, C1) - C0] = True
+    ring = boxm & ~reg
+    bs = (slice(max(r0 - a.ring, R0) - R0, min(r1 + a.ring, R1) - R0), slice(max(c0 - a.ring, C0) - C0, min(c1 + a.ring, C1) - C0))
+    for n, (v, m, s) in ctx["rel"].items():
+        base[n] = ((base[v] - m) / s).astype("float32")
+    sim = Simulator(model, ck, meta, base, reg, bs, ctx["targets"], a, dev, ctx["rel"])
+    f0, _, _ = sim.features(0, 0)
+    drift = max(float(np.nanmax(np.abs(f0[n][bs] - base[n][bs])) / sim.std_by_name.get(n, 1.0)) for n in sim.model_names)
+    p0 = sim.predict(base)
+    lst_c = lst[sl[0], sl[1]]
+    okl = sim.ok & np.isfinite(lst_c)
+    o_reg, o_ring = float(lst_c[reg & okl].mean()), float(lst_c[ring & okl].mean())
+    b_reg, b_ring, b_hot = area_stats(p0, sim.ok, reg, ring)
+    return {"sim": sim, "reg": reg, "ring": ring, "bs": bs, "sl": sl, "base": base, "p0": p0, "lst_c": lst_c, "okl": okl,
+            "r0": r0, "r1": r1, "c0": c0, "c1": c1, "R0": R0, "C0": C0, "o_reg": o_reg, "o_ring": o_ring, "b_reg": b_reg,
+            "b_ring": b_ring, "b_hot": b_hot, "obs_gap": o_reg - o_ring, "pred_gap": b_reg - b_ring,
+            "n_px": int((reg & sim.ok).sum()), "drift": drift}
+
+
+def dose_table(S, steps):
+    """Cooling of the area for 0 - 100 % of each lever (vegetation, cool roofs, both). Returns (doses, rows)."""
+    sim, reg, ring = S["sim"], S["reg"], S["ring"]
+    doses = np.linspace(0, 1, steps + 1)
+    rows = []
+    for d in doses:
+        row = {"dose_%": round(d * 100)}
+        for tag, (g, r) in {"veg": (d, 0), "roof": (0, d), "both": (d, d)}.items():
+            feats, ng, nr = sim.features(g, r)
+            reg_s, ring_s, hot_s = area_stats(sim.predict(feats), sim.ok, reg, ring)
+            row[f"{tag}_cooling"] = S["b_reg"] - reg_s
+            row[f"{tag}_gap_left"] = reg_s - ring_s
+            row[f"{tag}_hot10_gap_left"] = hot_s - ring_s
+        rows.append(row)
+    return doses, rows
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--city", required=True)
@@ -181,10 +260,8 @@ def main():
     model.load_state_dict(ck["model"])
     model.eval()
 
-    gf = xr.open_dataset(Path(a.grids) / f"{a.city}_features.nc")
-    lst = xr.open_dataset(Path(a.grids) / f"{a.city}_temp.nc")["LST"].values.astype("float32")
-    lc_full = gf["LANDCOVER"].values
-    valid = np.isfinite(lst) & (lc_full != WATER)
+    ctx = load_context(a.city, a, ck, meta)
+    gf, lst, valid, targets, city_mean = ctx["gf"], ctx["lst"], ctx["valid"], ctx["targets"], ctx["city_mean"]
     H, W = lst.shape
     if a.auto:
         r0, c0 = find_hotspot(lst, valid, a.auto, a.ring, gf["GHSL_BUILT_FRAC"].values, a.min_built)
@@ -193,52 +270,11 @@ def main():
     else:
         r0, r1, c0, c1 = a.box
         how = "given by --box"
-    r0, c0, r1, c1 = max(r0, 0), max(c0, 0), min(r1, H), min(c1, W)
-    # crop = area + ring + 34 pixels (the largest surroundings window is 67 pixels wide)
-    pad = a.ring + 34
-    R0, R1, C0, C1 = max(0, r0 - pad), min(H, r1 + pad), max(0, c0 - pad), min(W, c1 + pad)
-    sl = (slice(R0, R1), slice(C0, C1))
-    base = {n: gf[n].isel(y=sl[0], x=sl[1]).values.astype("float32") for n in gf.data_vars}
-    reg = np.zeros(base["NDVI"].shape, bool)
-    reg[r0 - R0:r1 - R0, c0 - C0:c1 - C0] = True
-    boxm = np.zeros_like(reg)
-    boxm[max(r0 - a.ring, R0) - R0:min(r1 + a.ring, R1) - R0, max(c0 - a.ring, C0) - C0:min(c1 + a.ring, C1) - C0] = True
-    ring = boxm & ~reg
-    bs = (slice(max(r0 - a.ring, R0) - R0, min(r1 + a.ring, R1) - R0), slice(max(c0 - a.ring, C0) - C0, min(c1 + a.ring, C1) - C0))
-
-    # what a "green" pixel of this city looks like
-    ndvi, lcf = gf["NDVI"].values, lc_full
-    tree = (lcf == 10) & (ndvi > 0.4)
-    if tree.sum() < 500:
-        tree = (ndvi > 0.4) & (lcf != WATER)
-    if not tree.any():
-        raise SystemExit("no green reference pixels in this city")
-    targets = {k: float(np.nanmedian(gf[k].values[tree])) for k in ("NDVI", "NDBI", "MNDWI", "ALBEDO")}
-
-    # city-relative inputs (checkpoints trained on the _rel channels): the city's own mean / spread of each feature, from the unedited grid
-    rel = {}
-    rel_names = [n for n in ck["features"] if n.endswith("_rel")]
-    if rel_names:
-        numeric = [n for n in ck["features"] if not n.endswith("_rel")]
-        usable_city = np.isfinite(np.stack([gf[n].values for n in numeric])).all(0) & (lc_full != WATER)
-        gstd = dict(zip(meta["features"], meta["std"]))
-        for n in rel_names:
-            v = n[:-4]
-            m, s = city_rel(gf[v].values, usable_city, REL_FLOOR * gstd[v])
-            rel[n] = (v, m, s)
-            base[n] = ((base[v] - m) / s).astype("float32")
-
-    sim = Simulator(model, ck, meta, base, reg, bs, targets, a, dev, rel)
-    f0, _, _ = sim.features(0, 0)
-    drift = max(float(np.nanmax(np.abs(f0[n][bs] - base[n][bs])) / sim.std_by_name.get(n, 1.0)) for n in sim.model_names)
-    p0 = sim.predict(base)
-    lst_c = lst[sl[0], sl[1]]
-    okl = sim.ok & np.isfinite(lst_c)
-    o_reg, o_ring = float(lst_c[reg & okl].mean()), float(lst_c[ring & okl].mean())
-    city_mean = float(lst[valid].mean())
-    b_reg, b_ring, b_hot = area_stats(p0, sim.ok, reg, ring)
-    obs_gap, pred_gap = o_reg - o_ring, b_reg - b_ring
-    n_px = int((reg & sim.ok).sum())
+    S = build_simulation(ctx, (r0, r1, c0, c1), a, model, ck, meta, dev)
+    sim, reg, ring, bs, p0, lst_c, okl = (S[k] for k in ("sim", "reg", "ring", "bs", "p0", "lst_c", "okl"))
+    r0, r1, c0, c1, R0, C0 = (S[k] for k in ("r0", "r1", "c0", "c1", "R0", "C0"))
+    o_reg, o_ring, b_reg, b_ring, b_hot, obs_gap, pred_gap, n_px, drift = (
+        S[k] for k in ("o_reg", "o_ring", "b_reg", "b_ring", "b_hot", "obs_gap", "pred_gap", "n_px", "drift"))
     print(f"\n{a.city}: area rows {r0}-{r1}, cols {c0}-{c1} ({r1 - r0} x {c1 - c0} pixels = {(r1 - r0) * RES} m x {(c1 - c0) * RES} m, "
           f"{n_px * PIXEL_HA:.1f} ha usable), {how}; neighbours = ring of {a.ring} pixels ({a.ring * RES} m)")
     print(f"observed LST: area {o_reg:.1f} C, neighbours {o_ring:.1f} C -> area is {obs_gap:+.1f} C vs its neighbours "
@@ -250,17 +286,7 @@ def main():
     if pred_gap <= 0:
         print("\nIn the model's view this area is not hotter than its neighbours, so there is no gap to close.")
 
-    doses = np.linspace(0, 1, a.steps + 1)
-    rows = []
-    for d in doses:
-        row = {"dose_%": round(d * 100)}
-        for tag, (g, r) in {"veg": (d, 0), "roof": (0, d), "both": (d, d)}.items():
-            feats, ng, nr = sim.features(g, r)
-            reg_s, ring_s, hot_s = area_stats(sim.predict(feats), sim.ok, reg, ring)
-            row[f"{tag}_cooling"] = b_reg - reg_s
-            row[f"{tag}_gap_left"] = reg_s - ring_s
-            row[f"{tag}_hot10_gap_left"] = hot_s - ring_s
-        rows.append(row)
+    doses, rows = dose_table(S, a.steps)
     t = pd.DataFrame(rows)
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)

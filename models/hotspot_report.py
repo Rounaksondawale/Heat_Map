@@ -110,9 +110,42 @@ def lonlat(x, y, epsg):
         return np.nan, np.nan
 
 
-def analyse(city, a, model, ck, meta, dev):
-    gf = xr.open_dataset(Path(a.grids) / f"{city}_features.nc")
-    tf = xr.open_dataset(Path(a.grids) / f"{city}_temp.nc")
+def hotspot_labels(zp, z, min_blocks):
+    """Clusters (labels 1..n) of blocks with Gi* z >= z that touch each other (8-neighbourhood) and have at least min_blocks blocks."""
+    lab, ncl = label(np.nan_to_num(zp, nan=-9) >= z, structure=np.ones((3, 3)))
+    sizes = np.bincount(lab.ravel(), minlength=ncl + 1)
+    for i in range(1, ncl + 1):
+        if sizes[i] < min_blocks:
+            lab[lab == i] = 0
+    return label(lab > 0, structure=np.ones((3, 3)))
+
+
+def group_channels(names):
+    return {g: [i for i, n in enumerate(names) if group_of(n) == g and n != "LANDCOVER"] for g in GROUPS}
+
+
+def driver_phi(model, ck, Zc, lc_c, us, cm, ring, gidx, add, dev):
+    """Shapley contribution (C) of each feature group to the mean predicted temperature of the pixels `cm`, against the neighbours `ring`."""
+    ref = Zc[:, ring].mean(1)
+    ref_lc = int(np.bincount(lc_c[ring & (lc_c < 255)]).argmax()) if (ring & (lc_c < 255)).any() else 255
+    v = {}
+    for m in range(1 << len(GROUPS)):
+        Zm, lm = Zc.copy(), lc_c.copy()
+        for gi, g in enumerate(GROUPS):
+            if m >> gi & 1:
+                continue                                           # this group keeps the cluster's own values
+            for ch in gidx[g]:
+                Zm[ch][cm] = ref[ch]
+            if g == "land cover":
+                lm[cm] = ref_lc
+        v[m] = float(run_model(model, Zm, lm, dev, ck["mu"], ck["sd"])[cm & us].mean() + add)
+    return shapley(v, len(GROUPS)), v
+
+
+def prepare_city(city, grids, ck, meta):
+    """Everything the model needs for one city: normalised input stack Z, land-cover indices, masks and the city's mean temperature."""
+    gf = xr.open_dataset(Path(grids) / f"{city}_features.nc")
+    tf = xr.open_dataset(Path(grids) / f"{city}_temp.nc")
     lst = tf["LST"].values.astype("float32")
     nobs = tf["n_obs"].values.astype("float32") if "n_obs" in tf else None
     lc = gf["LANDCOVER"].values
@@ -146,6 +179,15 @@ def analyse(city, a, model, ck, meta, dev):
     city_mean = float(lst[valid].mean())
     anomaly = ck.get("target", "absolute") == "anomaly"
     add = city_mean if anomaly else 0.0
+    return {"gf": gf, "lst": lst, "lc": lc, "xs": xs, "ys": ys, "epsg": epsg, "names": names, "look": look, "X": X,
+            "usable": usable, "valid": valid, "Z": Z, "lci": lci, "rel_s": rel_s, "city_mean": city_mean, "anomaly": anomaly,
+            "add": add, "H": H, "W": W}
+
+
+def analyse(city, a, model, ck, meta, dev):
+    P = prepare_city(city, a.grids, ck, meta)
+    lst, lc, xs, ys, epsg, names, look, X = (P[k] for k in ("lst", "lc", "xs", "ys", "epsg", "names", "look", "X"))
+    usable, valid, Z, lci, rel_s, city_mean, add, H, W = (P[k] for k in ("usable", "valid", "Z", "lci", "rel_s", "city_mean", "add", "H", "W"))
     pred = predict_grid(model, Z, lci, dev, ck["mu"], ck["sd"]) + add
     print(f"\n=== {city}: grid {H} x {W}, observed city mean {city_mean:.1f} C, {valid.mean() * 100:.0f}% of pixels usable ===")
 
@@ -153,13 +195,7 @@ def analyse(city, a, model, ck, meta, dev):
     B = a.block
     bp, bo = block_mean(pred, usable, B), block_mean(lst, valid, B)
     zp, zo = gi_star(bp), gi_star(bo)
-    hot = np.nan_to_num(zp, nan=-9) >= a.z
-    lab, ncl = label(hot, structure=np.ones((3, 3)))
-    sizes = np.bincount(lab.ravel(), minlength=ncl + 1)
-    for i in range(1, ncl + 1):
-        if sizes[i] < a.min_blocks:
-            lab[lab == i] = 0
-    lab, ncl = label(lab > 0, structure=np.ones((3, 3)))
+    lab, ncl = hotspot_labels(zp, a.z, a.min_blocks)
     hot = lab > 0
     nb = int(np.isfinite(bp).sum())
     print(f"hotspots (Gi* z >= {a.z} on {B * RES} m blocks): {int(hot.sum())} of {nb} blocks = {hot.sum() / max(nb, 1) * 100:.1f}% of the city, "
@@ -228,26 +264,13 @@ def analyse(city, a, model, ck, meta, dev):
           f"({hot.sum() / max(nb, 1) * 100:.1f}% of the city's blocks)")
 
     # ---- drivers (Shapley over the feature groups) for the top clusters
-    gidx = {g: [i for i, n in enumerate(names) if group_of(n) == g and n != "LANDCOVER"] for g in GROUPS}
+    gidx = group_channels(names)
     out_rows = []
     for rank, (row, sl, cm, ring, p_in, p_ring) in enumerate(rows, 1):
         row["rank"] = rank
         if rank <= a.top:
             Zc, lc_c, us = Z[:, sl[0], sl[1]], lci[sl[0], sl[1]], usable[sl]
-            ref = Zc[:, ring].mean(1)
-            ref_lc = int(np.bincount(lc_c[ring & (lc_c < 255)]).argmax()) if (ring & (lc_c < 255)).any() else 255
-            v = {}
-            for m in range(1 << len(GROUPS)):
-                Zm, lm = Zc.copy(), lc_c.copy()
-                for gi, g in enumerate(GROUPS):
-                    if m >> gi & 1:
-                        continue                                           # this group keeps the cluster's own values
-                    for ch in gidx[g]:
-                        Zm[ch][cm] = ref[ch]
-                    if g == "land cover":
-                        lm[cm] = ref_lc
-                v[m] = float(run_model(model, Zm, lm, dev, ck["mu"], ck["sd"])[cm & us].mean() + add)
-            phi = shapley(v, len(GROUPS))
+            phi, v = driver_phi(model, ck, Zc, lc_c, us, cm, ring, gidx, add, dev)
             for g, p in zip(GROUPS, phi):
                 row[f"drv_{g}"] = round(float(p), 2)
             row["drv_ref_mismatch"] = round(row["pred_gap"] - float(phi.sum()), 2)
