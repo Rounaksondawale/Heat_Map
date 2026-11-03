@@ -65,6 +65,8 @@ def load_city(city, M, grids, block=20, cache_dir=None):
         if cache is not None:
             cache.parent.mkdir(parents=True, exist_ok=True)
             np.save(cache, pred.astype("float32"))
+    for k in ("X", "gf"):                    # large raw arrays that are not needed once the input stack Z is built (saves about 0.7 GB)
+        P.pop(k, None)
     bp = block_mean(pred, P["usable"], block)
     bo = block_mean(P["lst"], P["valid"], block)
     return {"city": city, "P": P, "pred": pred, "B": block, "bp": bp, "bo": bo, "zp": gi_star(bp), "zo": gi_star(bo),
