@@ -5,14 +5,12 @@ cool roofing would bring it down to the level of its neighbours.
     pip install -r dashboard/requirements.txt          # on top of the project requirements and PyTorch
     streamlit run dashboard/app.py
 
-Needs (default locations, changeable in the sidebar or with HEATMAP_RUN / HEATMAP_GRIDS / HEATMAP_PATCHES):
-    pre_processing/grids/<City>_features.nc and <City>_temp.nc      (pre_processing/export_city_grids.py)
-    pre_processing/patches/meta.json                                (pre_processing/make_patches.py)
-    data/unet_run3/best.pt                                          (models/train_unet.py)
-You can copy just a few cities' two grid files, meta.json and best.pt to another machine and run it there.
+Needs (all in the Deploy/ folder, see Deploy/README.md and dashboard/paths.py; paths can be changed in the sidebar):
+    Deploy/best.pt      the trained model
+    Deploy/meta.json    feature means / spreads of the training run
+    Deploy/grids/       <City>_features.nc and <City>_temp.nc for each city to offer
 The page address keeps the city and the area (?city=Delhi&box=r0,r1,c0,c1), so a view can be shared as a link.
 """
-import os
 import sys
 from pathlib import Path
 
@@ -24,6 +22,7 @@ from folium.plugins import Draw, Fullscreen
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import engine as E  # noqa: E402
+import paths as PATHS  # noqa: E402
 import plots as PL  # noqa: E402
 
 try:
@@ -32,6 +31,7 @@ except ImportError:                                            # the manual box 
     st_folium = None
 
 ROOT = E.ROOT
+DEF = PATHS.default_paths()
 st.set_page_config(page_title="Urban Heat Hotspots", page_icon="🔥", layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""
@@ -82,7 +82,7 @@ def get_model(run, patches):
 
 @st.cache_resource(show_spinner="Predicting the whole city (a minute or two the first time, then cached) ...", max_entries=1)
 def get_city(city, run, patches, grids, block):
-    return E.load_city(city, get_model(run, patches), grids, block, cache_dir=ROOT / "data" / "dashboard_cache")
+    return E.load_city(city, get_model(run, patches), grids, block, cache_dir=DEF["cache"])
 
 
 @st.cache_resource(show_spinner="Analysing the area: drivers and cooling doses (up to a minute) ...", max_entries=6)
@@ -110,9 +110,9 @@ def get_layers(city, run, patches, grids, block, z, layer):
 st.sidebar.markdown("## 🔥 Urban heat")
 st.sidebar.caption("Hotspots, drivers and cooling what-ifs for Indian cities.")
 with st.sidebar.expander("Data locations", expanded=False):
-    run = st.text_input("Model folder", os.environ.get("HEATMAP_RUN", str(ROOT / "data" / "unet_run3")))
-    grids = st.text_input("City grids folder", os.environ.get("HEATMAP_GRIDS", str(ROOT / "pre_processing" / "grids")))
-    patches = st.text_input("Patches folder (meta.json)", os.environ.get("HEATMAP_PATCHES", str(ROOT / "pre_processing" / "patches")))
+    run = st.text_input("Model folder (best.pt)", DEF["run"])
+    grids = st.text_input("City grids folder", DEF["grids"])
+    patches = st.text_input("Folder with meta.json", DEF["patches"])
 problems = [p for p, ok in ((f"{run}/best.pt", (Path(run) / "best.pt").exists()), (f"{patches}/meta.json", (Path(patches) / "meta.json").exists()),
                             (grids, Path(grids).exists())) if not ok]
 if problems:

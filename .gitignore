@@ -25,3 +25,7 @@ venv/
 run_log.txt
 .env
 .DS_Store
+
+# Dashboard assets that are too large / generated
+Deploy/grids/
+Deploy/cache/

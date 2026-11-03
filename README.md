@@ -62,9 +62,10 @@ pip install -r dashboard/requirements.txt        # on top of the project require
 streamlit run dashboard/app.py
 ```
 
-It needs `pre_processing/grids/<City>_features.nc` and `<City>_temp.nc` for the cities you want, `pre_processing/patches/meta.json` and
-`data/unet_run3/best.pt` (paths can be changed in the sidebar). You can copy just two or three cities (about 200 MB each) to run it on a laptop.
-The first load of a city predicts the whole city and caches it in `data/dashboard_cache`; each area then takes up to a minute on a CPU
+Everything it needs lives in the [`Deploy/`](Deploy/README.md) folder: `best.pt` (the trained model), `meta.json` (the feature statistics of
+that training run) and `grids/<City>_features.nc` + `<City>_temp.nc` for each city you want to offer (about 200 MB per city, so two or three
+are enough for a laptop). `python dashboard/check_setup.py` tells you what is still missing.
+The first load of a city predicts the whole city and caches it in `Deploy/cache`; each area then takes up to a minute on a CPU
 (drivers and cooling doses). On a remote machine start it with `--server.address 0.0.0.0` and forward the port.
 
 ## How well does it work?
@@ -257,10 +258,10 @@ Smoke test of the data builder on one small box: `python extraction/build_datase
 
 ```
 extraction/       data pipeline: build_dataset, repair_dataset, finalize_dataset, add_context_features, audits, run_new_cities.sh
-                  (align_data.py, get_missing_data.py and two notebooks are early single-city Pune prototypes)
 pre_processing/   export_city_grids, make_patches, check_patches, pack_patches
 models/           train_unet, evaluate_unet, compare_runs, hotspot_report, group_importance, simulate_cooling
-dashboard/        Streamlit app: app.py (interface), engine.py (computations), plots.py (charts)
+dashboard/        Streamlit app: app.py (interface), engine.py (computations), plots.py (charts), check_setup.py
+Deploy/           what the dashboard runs on: best.pt, meta.json, grids/ (see Deploy/README.md)
 notebooks/        data_audit.ipynb
 docs/             the figures used in this README
 ```

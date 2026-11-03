@@ -3,19 +3,19 @@ Pre-flight check for the dashboard: are the packages, the trained model and the 
 
     python dashboard/check_setup.py
 
-Looks in the same default places as the app (override with HEATMAP_RUN, HEATMAP_GRIDS, HEATMAP_PATCHES). Prints OK / MISSING lines and,
+Looks in the same places as the app (the Deploy folder, see dashboard/paths.py; override with HEATMAP_RUN, HEATMAP_PATCHES, HEATMAP_GRIDS). Prints OK / MISSING lines and,
 at the end, either the command to start the dashboard or the list of things to fix. Changes nothing.
 """
 import importlib
 import json
-import os
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-run = Path(os.environ.get("HEATMAP_RUN", ROOT / "data" / "unet_run3"))
-grids = Path(os.environ.get("HEATMAP_GRIDS", ROOT / "pre_processing" / "grids"))
-patches = Path(os.environ.get("HEATMAP_PATCHES", ROOT / "pre_processing" / "patches"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import paths  # noqa: E402
+
+DEF = paths.default_paths()
+run, grids, patches = Path(DEF["run"]), Path(DEF["grids"]), Path(DEF["patches"])
 problems = []
 
 
@@ -44,7 +44,7 @@ except Exception:  # noqa: BLE001
 print("\nModel")
 ck = None
 f = run / "best.pt"
-line(f.exists(), f"{f}" + (f"  ({f.stat().st_size / 1e6:.1f} MB)" if f.exists() else "  <- copy data/unet_run3/best.pt here"))
+line(f.exists(), f"{f}" + (f"  ({f.stat().st_size / 1e6:.1f} MB)" if f.exists() else "  <- put best.pt here (from the VM: data/unet_run3/best.pt)"))
 if f.exists() and torch is not None:
     try:
         ck = torch.load(f, map_location="cpu", weights_only=False)
@@ -52,7 +52,7 @@ if f.exists() and torch is not None:
     except Exception as e:  # noqa: BLE001
         line(False, f"best.pt cannot be loaded: {e}")
 m = patches / "meta.json"
-line(m.exists(), f"{m}" + ("" if m.exists() else "  <- copy pre_processing/patches/meta.json here"))
+line(m.exists(), f"{m}" + ("" if m.exists() else "  <- put meta.json here (from the VM: pre_processing/patches/meta.json)"))
 if m.exists() and ck is not None:
     meta = json.load(open(m))
     ok = ck["features"] == meta["features"][:len(ck["features"])]
