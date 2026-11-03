@@ -53,20 +53,58 @@ python models/simulate_cooling.py --city Delhi --auto 20 --min-built 0.4
 
 ## Try it: the dashboard
 
-An interactive app on top of the same model. Pick a city, **draw a rectangle on the map**, and it tells you whether the area is a
-hotspot, what drives its heat, and how much planting or reflective roofing would bring it down to the level of its neighbours. A slider lets
-you try your own mix and see the result.
+An interactive app on top of the same model, with two modes:
+
+- **Anywhere in India (live).** A map of India. **Draw a rectangle** (1 to 10 km a side) on any place and press *Analyse*. The app downloads the
+  satellite data for that place (Landsat 8/9, elevation, land cover, buildings), derives the same 46 features as for the 50 trained cities,
+  runs the model, and shows whether the area is a hotspot, **what drives it**, and **how much planting or reflective roofing would bring it
+  down to the level of its neighbours**. Sliders let you try your own mix.
+- **Prepared cities.** The same analysis on the 50 cities processed in advance: instant, no downloads.
 
 ```bash
-pip install -r dashboard/requirements.txt        # on top of the project requirements and PyTorch
+pip install -r requirements-app.txt        # the dashboard's packages, plus PyTorch (pip install torch)
 streamlit run dashboard/app.py
 ```
 
-Everything it needs lives in the [`Deploy/`](Deploy/README.md) folder: `best.pt` (the trained model), `meta.json` (the feature statistics of
-that training run) and `grids/<City>_features.nc` + `<City>_temp.nc` for each city you want to offer (about 200 MB per city, so two or three
-are enough for a laptop). `python dashboard/check_setup.py` tells you what is still missing.
-The first load of a city predicts the whole city and caches it in `Deploy/cache`; each area then takes up to a minute on a CPU
-(drivers and cooling doses). On a remote machine start it with `--server.address 0.0.0.0` and forward the port.
+Everything it needs lives in the [`Deploy/`](Deploy/README.md) folder: `best.pt` (the trained model) and `meta.json` (the feature statistics of
+that training run). The prepared-cities mode also needs `grids/<City>_features.nc` + `<City>_temp.nc` (about 200 MB per city).
+`python dashboard/check_setup.py` tells you what is still missing.
+
+**How the live mode works, and what it costs.** For a rectangle it processes a window of at least 16 km around it (the model needs the
+surroundings), exactly like the prepared cities: `extraction/build_dataset.py` for the data, `pre_processing/export_city_grids.py` for the
+derived features. On a fresh Pune area it took about **4 minutes** on a laptop connection (26 Landsat scenes, about 2.5 minutes; building layers,
+about 1 minute the first time for a region, then cached); the same rectangle is instant afterwards. We checked the live features against the
+original build of the same place: the same 46 features on the same pixel grid, median correlation 0.998 and temperature correlation 1.000
+(the 2 km-window features and distance to water differ slightly, as the live window is larger).
+Live areas are a little **less reliable** than the prepared cities: fewer scenes are averaged (20 instead of up to 40), and the city-relative
+inputs and the hotspot statistics are relative to the window instead of a 40 km city box. It needs internet access (Microsoft Planetary Computer
+and the JRC GHSL server) and about 4 GB of RAM, and analyses one area at a time.
+
+## Deploy it (CI/CD)
+
+The repository has a GitHub Actions pipeline, `.github/workflows/ci.yml`:
+
+1. **Test** (every push and pull request): installs the app's packages and runs `python -m unittest discover -s tests`. The tests build a small
+   synthetic city, so they need no real data and no internet. They cover the engine, the live-pipeline helpers and the whole Streamlit app
+   (draw a rectangle, analyse, results) with Streamlit's test harness.
+2. **Build** (push to `main`): builds the container (`Dockerfile`) and pushes it to the GitHub Container Registry.
+3. **Deploy** (optional, push to `main`): set the repository variable `DEPLOY_TARGET` to one of
+
+   | `DEPLOY_TARGET` | What it does | You provide |
+   |---|---|---|
+   | `huggingface` | pushes the app to a Hugging Face Space (Docker SDK), which builds and runs it | variable `HF_SPACE` (`your-name/urban-heat`), secret `HF_TOKEN` (write token) |
+   | `azure` | points an Azure Container App at the new image | variables `AZURE_CONTAINER_APP`, `AZURE_RESOURCE_GROUP`; secrets `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` (an app registration with a federated credential for the repository) |
+
+Before the first deploy, put **`Deploy/meta.json`** (from `pre_processing/patches/meta.json` of the training run) in the repository next to
+`Deploy/best.pt`; the build stops with a clear message if either is missing. To create the Azure app once:
+
+```bash
+az group create -n heat-rg -l centralindia
+az containerapp env create -n heat-env -g heat-rg -l centralindia
+az containerapp create -n urban-heat -g heat-rg --environment heat-env --image ghcr.io/<owner>/<repo>:latest     --target-port 8501 --ingress external --cpu 2 --memory 4Gi --min-replicas 1
+```
+(make the package public in GitHub, or add `--registry-server ghcr.io --registry-username <user> --registry-password <token>`). To run the
+container yourself: `docker build -t urban-heat .` then `docker run -p 8501:8501 urban-heat`.
 
 ## How well does it work?
 
@@ -260,7 +298,9 @@ Smoke test of the data builder on one small box: `python extraction/build_datase
 extraction/       data pipeline: build_dataset, repair_dataset, finalize_dataset, add_context_features, audits, run_new_cities.sh
 pre_processing/   export_city_grids, make_patches, check_patches, pack_patches
 models/           train_unet, evaluate_unet, compare_runs, hotspot_report, group_importance, simulate_cooling
-dashboard/        Streamlit app: app.py (interface), engine.py (computations), plots.py (charts), check_setup.py
+dashboard/        Streamlit app: app.py (interface), engine.py (computations), live.py (live satellite pipeline), plots.py, check_setup.py
+tests/            unit and app tests (synthetic city, no real data needed)
+.github/          CI/CD pipeline (test, build the container, deploy)
 Deploy/           what the dashboard runs on: best.pt, meta.json, grids/ (see Deploy/README.md)
 notebooks/        data_audit.ipynb
 docs/             the figures used in this README

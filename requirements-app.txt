@@ -1,0 +1,20 @@
+# Runtime packages of the dashboard, live satellite pipeline included. PyTorch is installed separately
+# (the small CPU wheel): pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu
+numpy>=2.0,<2.5
+pandas>=2.2,<3
+scipy>=1.13,<1.17
+xarray>=2024.6
+dask>=2024.6
+netCDF4>=1.7
+matplotlib>=3.8,<3.11
+pyproj>=3.6,<3.8
+pillow>=10,<12
+requests>=2.31
+rasterio>=1.4
+rioxarray>=0.17
+odc-stac>=0.3.11
+pystac-client>=0.8
+planetary-computer>=1.0
+streamlit>=1.49,<2
+folium>=0.17
+streamlit-folium>=0.24

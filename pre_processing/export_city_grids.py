@@ -42,16 +42,21 @@ def _write(ds, path):
     ds.to_netcdf(path, encoding=enc)
 
 
-def export(nc_path, out_dir):
-    city = Path(nc_path).parent.name
-    ds = xr.open_dataset(nc_path).load()
+def export_dataset(ds, city, out_dir):
+    """Write <out_dir>/<city>_features.nc and <city>_temp.nc from an in-memory aligned dataset (all layers of aligned.nc)."""
     ds = ds.assign({k: v for k, v in context_grids(ds).items()})
+    Path(out_dir).mkdir(parents=True, exist_ok=True)
     feats, temp = Path(out_dir) / f"{city}_features.nc", Path(out_dir) / f"{city}_temp.nc"
     _write(ds[FEATURES], feats)
     _write(ds[["LST", "n_obs"]], temp)
-    r = {"city": city, "grid": f"{ds.sizes['y']} x {ds.sizes['x']}", "features": len(FEATURES),
-         "valid_LST_%": round(float(np.isfinite(ds["LST"].values).mean() * 100), 1),
-         "size_MB": round((os.path.getsize(feats) + os.path.getsize(temp)) / 1e6, 1)}
+    return {"city": city, "grid": f"{ds.sizes['y']} x {ds.sizes['x']}", "features": len(FEATURES),
+            "valid_LST_%": round(float(np.isfinite(ds["LST"].values).mean() * 100), 1),
+            "size_MB": round((os.path.getsize(feats) + os.path.getsize(temp)) / 1e6, 1)}
+
+
+def export(nc_path, out_dir):
+    ds = xr.open_dataset(nc_path).load()
+    r = export_dataset(ds, Path(nc_path).parent.name, out_dir)
     ds.close()
     return r
 

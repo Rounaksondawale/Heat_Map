@@ -30,7 +30,7 @@ from simulate_cooling import area_stats, build_simulation, dose_for, dose_table,
 from train_unet import UNet  # noqa: E402
 
 RES, PIXEL_HA = 30, 0.09
-MIN_SIDE, MAX_SIDE = 8, 260              # rectangle side in pixels (240 m .. 7.8 km)
+MIN_SIDE, MAX_SIDE = 8, 350              # rectangle side in pixels (240 m .. 10.5 km)
 
 
 def load_model(run, patches):

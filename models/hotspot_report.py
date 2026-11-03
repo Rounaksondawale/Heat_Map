@@ -179,7 +179,9 @@ def prepare_city(city, grids, ck, meta):
     city_mean = float(lst[valid].mean())
     anomaly = ck.get("target", "absolute") == "anomaly"
     add = city_mean if anomaly else 0.0
-    return {"gf": gf, "lst": lst, "lc": lc, "xs": xs, "ys": ys, "epsg": epsg, "names": names, "look": look, "X": X,
+    gf.close()
+    tf.close()
+    return {"lst": lst, "lc": lc, "xs": xs, "ys": ys, "epsg": epsg, "names": names, "look": look, "X": X,
             "usable": usable, "valid": valid, "Z": Z, "lci": lci, "rel_s": rel_s, "city_mean": city_mean, "anomaly": anomaly,
             "add": add, "H": H, "W": W}
 

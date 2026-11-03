@@ -157,8 +157,10 @@ def dose_for(doses, gaps):
 
 def load_context(city, a, ck, meta):
     """Everything about a city that does not depend on the studied area: grids in memory, valid mask, tree reference values, city-relative stats."""
-    gf = xr.open_dataset(Path(a.grids) / f"{city}_features.nc").load()
-    lst = xr.open_dataset(Path(a.grids) / f"{city}_temp.nc")["LST"].values.astype("float32")
+    with xr.open_dataset(Path(a.grids) / f"{city}_features.nc") as f:
+        gf = f.load()
+    with xr.open_dataset(Path(a.grids) / f"{city}_temp.nc") as t:
+        lst = t["LST"].values.astype("float32")
     lc_full = gf["LANDCOVER"].values
     valid = np.isfinite(lst) & (lc_full != WATER)
     # what a "green" pixel of this city looks like

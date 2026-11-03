@@ -28,7 +28,9 @@ def line(ok, text):
 print(f"Python {sys.version.split()[0]}\n\nPackages")
 for mod, pip in (("streamlit", "streamlit"), ("folium", "folium"), ("streamlit_folium", "streamlit-folium"), ("torch", "torch"),
                  ("xarray", "xarray"), ("netCDF4", "netCDF4"), ("numpy", "numpy"), ("pandas", "pandas"), ("scipy", "scipy"),
-                 ("matplotlib", "matplotlib"), ("pyproj", "pyproj"), ("PIL", "pillow")):
+                 ("matplotlib", "matplotlib"), ("pyproj", "pyproj"), ("PIL", "pillow"),
+                 ("rioxarray", "rioxarray"), ("rasterio", "rasterio"), ("odc.stac", "odc-stac"), ("pystac_client", "pystac-client"),
+                 ("planetary_computer", "planetary-computer"), ("requests", "requests")):
     try:
         m = importlib.import_module(mod)
         line(True, f"{mod} {getattr(m, '__version__', '')}")
@@ -58,20 +60,19 @@ if m.exists() and ck is not None:
     ok = ck["features"] == meta["features"][:len(ck["features"])]
     line(ok, "meta.json matches the model's input features" if ok else "meta.json does not match best.pt (they must come from the same run)")
 
-print("\nCity files")
+print("\nPrepared city files (optional: only the 'Prepared cities' mode needs them; the live mode downloads its own data)")
 if grids.exists():
     feats = {p.name[:-len("_features.nc")] for p in grids.glob("*_features.nc")}
     temps = {p.name[:-len("_temp.nc")] for p in grids.glob("*_temp.nc")}
     both = sorted(feats & temps)
-    line(bool(both), f"{len(both)} city/cities ready in {grids}: {', '.join(both) if both else 'none'}"
-         + ("" if both else "  <- need <City>_features.nc and <City>_temp.nc for each city"))
+    print(f"[{'OK     ' if both else 'none   '}] {len(both)} city/cities in {grids}: {', '.join(both) if both else 'none'}")
     for c in sorted(feats ^ temps):
         line(False, f"{c}: only one of the two files is there")
     for c in both:
         mb = (grids / f"{c}_features.nc").stat().st_size / 1e6
         print(f"        {c}: {mb:.0f} MB features")
 else:
-    line(False, f"{grids} does not exist  <- copy the <City>_features.nc and <City>_temp.nc files here")
+    print(f"[none   ] {grids} does not exist (fine for the live mode)")
 
 try:
     import psutil

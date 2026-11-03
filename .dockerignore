@@ -1,0 +1,11 @@
+.git
+.github
+docs
+tests
+notebooks
+**/__pycache__
+**/*.pyc
+Deploy/grids
+Deploy/cache
+data
+*.log
