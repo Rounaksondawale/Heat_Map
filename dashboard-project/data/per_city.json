@@ -1,0 +1,126 @@
+{
+ "_source": "README.md lines 152-164 (Full metrics: Final model, city by city)",
+ "_note": "Final model on the 10 held-out validation cities. MAE in C with each city's mean given (pattern error). R2_within = R2 inside the city as scored; R2_anomaly = with the city's constant offset removed. hot_* use the hottest 10 % of each city; hot_bias in C. Best epoch was picked on these cities (slightly optimistic).",
+ "readme_columns": [
+  "City",
+  "MAE (°C)",
+  "R² inside",
+  "R² offset removed",
+  "Spearman",
+  "Hot AUC",
+  "Hot F1",
+  "Bias on hot pixels (°C)"
+ ],
+ "cities": [
+  {
+   "city": "Amritsar",
+   "MAE": 0.54,
+   "R2_within": 0.77,
+   "R2_anomaly": 0.77,
+   "spearman": 0.88,
+   "hot_AUC": 0.97,
+   "hot_F1": 0.76,
+   "hot_bias": -0.52
+  },
+  {
+   "city": "Bengaluru",
+   "MAE": 0.9,
+   "R2_within": 0.75,
+   "R2_anomaly": 0.76,
+   "spearman": 0.86,
+   "hot_AUC": 0.93,
+   "hot_F1": 0.6,
+   "hot_bias": -0.53
+  },
+  {
+   "city": "Bhubaneswar",
+   "MAE": 1.0,
+   "R2_within": 0.7,
+   "R2_anomaly": 0.73,
+   "spearman": 0.9,
+   "hot_AUC": 0.93,
+   "hot_F1": 0.58,
+   "hot_bias": -0.18
+  },
+  {
+   "city": "Chennai",
+   "MAE": 0.93,
+   "R2_within": 0.76,
+   "R2_anomaly": 0.79,
+   "spearman": 0.85,
+   "hot_AUC": 0.9,
+   "hot_F1": 0.54,
+   "hot_bias": -1.21
+  },
+  {
+   "city": "Coimbatore",
+   "MAE": 1.74,
+   "R2_within": 0.68,
+   "R2_anomaly": 0.75,
+   "spearman": 0.91,
+   "hot_AUC": 0.95,
+   "hot_F1": 0.65,
+   "hot_bias": -1.09
+  },
+  {
+   "city": "Dehradun",
+   "MAE": 1.96,
+   "R2_within": 0.67,
+   "R2_anomaly": 0.69,
+   "spearman": 0.86,
+   "hot_AUC": 0.94,
+   "hot_F1": 0.61,
+   "hot_bias": -3.99
+  },
+  {
+   "city": "Jaipur",
+   "MAE": 0.98,
+   "R2_within": 0.78,
+   "R2_anomaly": 0.79,
+   "spearman": 0.89,
+   "hot_AUC": 0.95,
+   "hot_F1": 0.59,
+   "hot_bias": -1.07
+  },
+  {
+   "city": "Kolkata",
+   "MAE": 0.82,
+   "R2_within": 0.78,
+   "R2_anomaly": 0.79,
+   "spearman": 0.91,
+   "hot_AUC": 0.95,
+   "hot_F1": 0.62,
+   "hot_bias": -1.87
+  },
+  {
+   "city": "Lucknow",
+   "MAE": 1.23,
+   "R2_within": 0.64,
+   "R2_anomaly": 0.64,
+   "spearman": 0.74,
+   "hot_AUC": 0.92,
+   "hot_F1": 0.56,
+   "hot_bias": -1.83
+  },
+  {
+   "city": "Nagpur",
+   "MAE": 1.06,
+   "R2_within": 0.71,
+   "R2_anomaly": 0.74,
+   "spearman": 0.83,
+   "hot_AUC": 0.92,
+   "hot_F1": 0.54,
+   "hot_bias": -1.18
+  }
+ ],
+ "mean": {
+  "city": "Mean",
+  "MAE": 1.12,
+  "R2_within": 0.72,
+  "R2_anomaly": 0.74,
+  "spearman": 0.86,
+  "hot_AUC": 0.93,
+  "hot_F1": 0.6,
+  "hot_bias": -1.35
+ }
+}

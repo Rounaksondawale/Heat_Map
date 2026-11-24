@@ -1,0 +1,411 @@
+{
+ "_source": [
+  "extraction/build_dataset.py (CITIES)",
+  "pre_processing/make_patches.py (VAL_DEFAULT)"
+ ],
+ "_note": "City centres and the train/validation split as configured in code (each city is a 40 km box around the centre). The split is the script default; the authoritative split of the trained run is train_cities/val_cities in pre_processing/patches/meta.json, which is not available locally.",
+ "n_cities": 50,
+ "n_val": 10,
+ "cities": [
+  {
+   "city": "Pune",
+   "lon": 73.856,
+   "lat": 18.52,
+   "climate": "semi-arid",
+   "cloud_max_pct": 10,
+   "split": "train"
+  },
+  {
+   "city": "Delhi",
+   "lon": 77.209,
+   "lat": 28.614,
+   "climate": "semi-arid/subtrop",
+   "cloud_max_pct": 15,
+   "split": "train"
+  },
+  {
+   "city": "Jaipur",
+   "lon": 75.787,
+   "lat": 26.912,
+   "climate": "semi-arid",
+   "cloud_max_pct": 10,
+   "split": "val"
+  },
+  {
+   "city": "Ahmedabad",
+   "lon": 72.571,
+   "lat": 23.023,
+   "climate": "semi-arid",
+   "cloud_max_pct": 10,
+   "split": "train"
+  },
+  {
+   "city": "Nagpur",
+   "lon": 79.088,
+   "lat": 21.146,
+   "climate": "tropical savanna",
+   "cloud_max_pct": 10,
+   "split": "val"
+  },
+  {
+   "city": "Hyderabad",
+   "lon": 78.487,
+   "lat": 17.385,
+   "climate": "semi-arid",
+   "cloud_max_pct": 10,
+   "split": "train"
+  },
+  {
+   "city": "Bengaluru",
+   "lon": 77.594,
+   "lat": 12.972,
+   "climate": "tropical savanna",
+   "cloud_max_pct": 20,
+   "split": "val"
+  },
+  {
+   "city": "Chennai",
+   "lon": 80.27,
+   "lat": 13.083,
+   "climate": "tropical coastal",
+   "cloud_max_pct": 15,
+   "split": "val"
+  },
+  {
+   "city": "Mumbai",
+   "lon": 72.878,
+   "lat": 19.076,
+   "climate": "tropical coastal",
+   "cloud_max_pct": 15,
+   "split": "train"
+  },
+  {
+   "city": "Kolkata",
+   "lon": 88.364,
+   "lat": 22.572,
+   "climate": "tropical humid",
+   "cloud_max_pct": 20,
+   "split": "val"
+  },
+  {
+   "city": "Lucknow",
+   "lon": 80.946,
+   "lat": 26.847,
+   "climate": "humid subtropical",
+   "cloud_max_pct": 10,
+   "split": "val"
+  },
+  {
+   "city": "Bhubaneswar",
+   "lon": 85.824,
+   "lat": 20.296,
+   "climate": "tropical savanna",
+   "cloud_max_pct": 15,
+   "split": "val"
+  },
+  {
+   "city": "Guwahati",
+   "lon": 91.736,
+   "lat": 26.145,
+   "climate": "humid subtropical",
+   "cloud_max_pct": 25,
+   "split": "train"
+  },
+  {
+   "city": "Chandigarh",
+   "lon": 76.779,
+   "lat": 30.733,
+   "climate": "humid subtropical",
+   "cloud_max_pct": 10,
+   "split": "train"
+  },
+  {
+   "city": "Shimla",
+   "lon": 77.171,
+   "lat": 31.105,
+   "climate": "humid subtropical (hill)",
+   "cloud_max_pct": 20,
+   "split": "train"
+  },
+  {
+   "city": "Dehradun",
+   "lon": 78.032,
+   "lat": 30.316,
+   "climate": "humid subtropical",
+   "cloud_max_pct": 15,
+   "split": "val"
+  },
+  {
+   "city": "Ranchi",
+   "lon": 85.309,
+   "lat": 23.344,
+   "climate": "humid subtropical",
+   "cloud_max_pct": 15,
+   "split": "train"
+  },
+  {
+   "city": "Shillong",
+   "lon": 91.883,
+   "lat": 25.578,
+   "climate": "humid subtropical (hill)",
+   "cloud_max_pct": 30,
+   "split": "train"
+  },
+  {
+   "city": "Visakhapatnam",
+   "lon": 83.218,
+   "lat": 17.687,
+   "climate": "tropical coastal",
+   "cloud_max_pct": 15,
+   "split": "train"
+  },
+  {
+   "city": "Surat",
+   "lon": 72.831,
+   "lat": 21.17,
+   "climate": "tropical coastal",
+   "cloud_max_pct": 15,
+   "split": "train"
+  },
+  {
+   "city": "Kochi",
+   "lon": 76.267,
+   "lat": 9.931,
+   "climate": "tropical coastal",
+   "cloud_max_pct": 25,
+   "split": "train"
+  },
+  {
+   "city": "Thiruvananthapuram",
+   "lon": 76.953,
+   "lat": 8.524,
+   "climate": "tropical coastal",
+   "cloud_max_pct": 25,
+   "split": "train"
+  },
+  {
+   "city": "Mangaluru",
+   "lon": 74.856,
+   "lat": 12.914,
+   "climate": "tropical coastal",
+   "cloud_max_pct": 20,
+   "split": "train"
+  },
+  {
+   "city": "Jodhpur",
+   "lon": 73.024,
+   "lat": 26.238,
+   "climate": "arid",
+   "cloud_max_pct": 10,
+   "split": "train"
+  },
+  {
+   "city": "Indore",
+   "lon": 75.857,
+   "lat": 22.719,
+   "climate": "semi-arid",
+   "cloud_max_pct": 10,
+   "split": "train"
+  },
+  {
+   "city": "Bhopal",
+   "lon": 77.413,
+   "lat": 23.259,
+   "climate": "semi-arid",
+   "cloud_max_pct": 10,
+   "split": "train"
+  },
+  {
+   "city": "Amritsar",
+   "lon": 74.873,
+   "lat": 31.634,
+   "climate": "semi-arid/subtrop",
+   "cloud_max_pct": 10,
+   "split": "val"
+  },
+  {
+   "city": "Ludhiana",
+   "lon": 75.857,
+   "lat": 30.901,
+   "climate": "semi-arid/subtrop",
+   "cloud_max_pct": 10,
+   "split": "train"
+  },
+  {
+   "city": "Patna",
+   "lon": 85.144,
+   "lat": 25.594,
+   "climate": "humid subtropical",
+   "cloud_max_pct": 15,
+   "split": "train"
+  },
+  {
+   "city": "Raipur",
+   "lon": 81.63,
+   "lat": 21.251,
+   "climate": "tropical savanna",
+   "cloud_max_pct": 15,
+   "split": "train"
+  },
+  {
+   "city": "Coimbatore",
+   "lon": 76.956,
+   "lat": 11.017,
+   "climate": "tropical savanna",
+   "cloud_max_pct": 20,
+   "split": "val"
+  },
+  {
+   "city": "Vadodara",
+   "lon": 73.181,
+   "lat": 22.307,
+   "climate": "semi-arid",
+   "cloud_max_pct": 10,
+   "split": "train"
+  },
+  {
+   "city": "Kanpur",
+   "lon": 80.332,
+   "lat": 26.449,
+   "climate": "humid subtropical",
+   "cloud_max_pct": 10,
+   "split": "train"
+  },
+  {
+   "city": "Srinagar",
+   "lon": 74.797,
+   "lat": 34.083,
+   "climate": "temperate (hill)",
+   "cloud_max_pct": 20,
+   "split": "train"
+  },
+  {
+   "city": "Jammu",
+   "lon": 74.857,
+   "lat": 32.726,
+   "climate": "humid subtropical",
+   "cloud_max_pct": 10,
+   "split": "train"
+  },
+  {
+   "city": "Agartala",
+   "lon": 91.28,
+   "lat": 23.831,
+   "climate": "humid subtropical",
+   "cloud_max_pct": 25,
+   "split": "train"
+  },
+  {
+   "city": "Imphal",
+   "lon": 93.937,
+   "lat": 24.817,
+   "climate": "humid subtropical (hill)",
+   "cloud_max_pct": 25,
+   "split": "train"
+  },
+  {
+   "city": "Puducherry",
+   "lon": 79.808,
+   "lat": 11.934,
+   "climate": "tropical coastal",
+   "cloud_max_pct": 20,
+   "split": "train"
+  },
+  {
+   "city": "Panaji",
+   "lon": 73.827,
+   "lat": 15.499,
+   "climate": "tropical coastal",
+   "cloud_max_pct": 25,
+   "split": "train"
+  },
+  {
+   "city": "Madurai",
+   "lon": 78.119,
+   "lat": 9.925,
+   "climate": "tropical savanna",
+   "cloud_max_pct": 15,
+   "split": "train"
+  },
+  {
+   "city": "Bikaner",
+   "lon": 73.311,
+   "lat": 28.022,
+   "climate": "arid",
+   "cloud_max_pct": 10,
+   "split": "train"
+  },
+  {
+   "city": "Ajmer",
+   "lon": 74.64,
+   "lat": 26.45,
+   "climate": "semi-arid",
+   "cloud_max_pct": 10,
+   "split": "train"
+  },
+  {
+   "city": "Udaipur",
+   "lon": 73.712,
+   "lat": 24.585,
+   "climate": "semi-arid",
+   "cloud_max_pct": 10,
+   "split": "train"
+  },
+  {
+   "city": "Rajkot",
+   "lon": 70.802,
+   "lat": 22.304,
+   "climate": "semi-arid",
+   "cloud_max_pct": 10,
+   "split": "train"
+  },
+  {
+   "city": "Nashik",
+   "lon": 73.789,
+   "lat": 19.998,
+   "climate": "semi-arid",
+   "cloud_max_pct": 10,
+   "split": "train"
+  },
+  {
+   "city": "Aurangabad",
+   "lon": 75.343,
+   "lat": 19.877,
+   "climate": "semi-arid",
+   "cloud_max_pct": 10,
+   "split": "train"
+  },
+  {
+   "city": "Agra",
+   "lon": 78.008,
+   "lat": 27.177,
+   "climate": "semi-arid/subtrop",
+   "cloud_max_pct": 10,
+   "split": "train"
+  },
+  {
+   "city": "Varanasi",
+   "lon": 82.973,
+   "lat": 25.317,
+   "climate": "humid subtropical",
+   "cloud_max_pct": 10,
+   "split": "train"
+  },
+  {
+   "city": "Jabalpur",
+   "lon": 79.986,
+   "lat": 23.181,
+   "climate": "humid subtropical",
+   "cloud_max_pct": 10,
+   "split": "train"
+  },
+  {
+   "city": "Gwalior",
+   "lon": 78.182,
+   "lat": 26.218,
+   "climate": "semi-arid/subtrop",
+   "cloud_max_pct": 10,
+   "split": "train"
+  }
+ ]
+}

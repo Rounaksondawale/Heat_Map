@@ -1,0 +1,34 @@
+{
+ "_source": "docs/",
+ "_note": "Figures redrawn by the authors from the evaluation / comparison / importance / simulator output; fig_delhi_map.png is a crop of a real simulate_cooling.py figure (README.md).",
+ "figures": [
+  {
+   "file": "docs/fig_cooling_curves.png",
+   "bytes": 169667
+  },
+  {
+   "file": "docs/fig_delhi_drivers.png",
+   "bytes": 59891
+  },
+  {
+   "file": "docs/fig_delhi_map.png",
+   "bytes": 704420
+  },
+  {
+   "file": "docs/fig_group_importance.png",
+   "bytes": 52316
+  },
+  {
+   "file": "docs/fig_model_comparison.png",
+   "bytes": 63507
+  },
+  {
+   "file": "docs/fig_per_city_r2.png",
+   "bytes": 86027
+  },
+  {
+   "file": "docs/fig_vegetation_check.png",
+   "bytes": 57193
+  }
+ ]
+}

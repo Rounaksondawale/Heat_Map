@@ -1,0 +1,214 @@
+{
+ "_source": [
+  "README.md line 141 (prose; full table data/unet_run3/group_importance.csv is on the VM)",
+  "README.md lines 114-119 (How well does it work?)",
+  "README.md lines 135-136",
+  "README.md lines 174-178 (All trained models, same validation pixels; produced by models/compare_runs.py)",
+  "README.md lines 187-195 (Error by land cover, final model)",
+  "README.md lines 202-207 (Hotspot detection quality: Gi* z >= 2.58, clusters >= 1 C above neighbours)",
+  "README.md lines 218-224 (Data and training facts)"
+ ],
+ "headline": {
+  "_source": "README.md lines 114-119 (How well does it work?)",
+  "rows": [
+   {
+    "metric": "R² inside the city",
+    "first": 0.54,
+    "final": 0.74
+   },
+   {
+    "metric": "Rank correlation inside the city",
+    "first": 0.78,
+    "final": 0.86
+   },
+   {
+    "metric": "Hotspot AUC",
+    "first": 0.88,
+    "final": 0.93
+   },
+   {
+    "metric": "Hotspot F1",
+    "first": 0.5,
+    "final": 0.6
+   },
+   {
+    "metric": "Cities worse than \"every pixel = city average\"",
+    "first": 1,
+    "final": 0
+   }
+  ]
+ },
+ "models": {
+  "_source": "README.md lines 174-178 (All trained models, same validation pixels; produced by models/compare_runs.py)",
+  "rows": [
+   {
+    "model": "First model",
+    "target": "absolute temperature",
+    "inputs": 45,
+    "epochs": 30,
+    "R2_anomaly": 0.54,
+    "spearman": 0.78,
+    "hot_AUC": 0.88,
+    "hot_F1": 0.5,
+    "hot_bias": -1.45,
+    "cities_worse_than_city_mean": 1
+   },
+   {
+    "model": "Smaller anomaly model",
+    "target": "anomaly",
+    "inputs": 45,
+    "epochs": 12,
+    "R2_anomaly": 0.53,
+    "spearman": 0.74,
+    "hot_AUC": 0.89,
+    "hot_F1": 0.47,
+    "hot_bias": -2.45,
+    "cities_worse_than_city_mean": 0
+   },
+   {
+    "model": "Final model",
+    "target": "anomaly",
+    "inputs": 51,
+    "epochs": 7,
+    "R2_anomaly": 0.74,
+    "spearman": 0.86,
+    "hot_AUC": 0.93,
+    "hot_F1": 0.6,
+    "hot_bias": -1.35,
+    "cities_worse_than_city_mean": 0
+   }
+  ]
+ },
+ "landcover": {
+  "_source": "README.md lines 187-195 (Error by land cover, final model)",
+  "rows": [
+   {
+    "landcover": "Cropland",
+    "pixels_millions": 6.74,
+    "MAE": 0.92,
+    "bias": 0.04
+   },
+   {
+    "landcover": "Tree cover",
+    "pixels_millions": 4.98,
+    "MAE": 1.37,
+    "bias": 0.43
+   },
+   {
+    "landcover": "Built-up",
+    "pixels_millions": 3.4,
+    "MAE": 1.12,
+    "bias": -0.07
+   },
+   {
+    "landcover": "Grassland",
+    "pixels_millions": 2.13,
+    "MAE": 1.16,
+    "bias": 0.39
+   },
+   {
+    "landcover": "Shrubland",
+    "pixels_millions": 0.36,
+    "MAE": 1.06,
+    "bias": 0.19
+   },
+   {
+    "landcover": "Bare / sparse",
+    "pixels_millions": 0.18,
+    "MAE": 2.21,
+    "bias": -0.83
+   },
+   {
+    "landcover": "Wetland",
+    "pixels_millions": 0.02,
+    "MAE": 1.05,
+    "bias": 0.24
+   }
+  ]
+ },
+ "hotspot_detection": {
+  "_source": "README.md lines 202-207 (Hotspot detection quality: Gi* z >= 2.58, clusters >= 1 C above neighbours)",
+  "cities": {
+   "Delhi": {
+    "blocks_flagged_pct": 11.1,
+    "clusters_kept": 7,
+    "clusters_area_pct": 3.7,
+    "precision": 0.57,
+    "recall": 0.5,
+    "IoU": 0.36,
+    "block_mean_corr": 0.85
+   },
+   "Jaipur": {
+    "blocks_flagged_pct": 18.9,
+    "clusters_kept": 5,
+    "clusters_area_pct": 16.0,
+    "precision": 0.75,
+    "recall": 0.78,
+    "IoU": 0.62,
+    "block_mean_corr": 0.91
+   }
+  }
+ },
+ "group_importance": {
+  "_source": "README.md line 141 (prose; full table data/unet_run3/group_importance.csv is on the VM)",
+  "rows": [
+   {
+    "group": "vegetation",
+    "R2_drop": 0.89
+   },
+   {
+    "group": "water",
+    "R2_drop": 0.39
+   },
+   {
+    "group": "built-up",
+    "R2_drop": 0.31
+   }
+  ],
+  "rest_below": 0.1
+ },
+ "vegetation_check": {
+  "_source": "README.md lines 135-136",
+  "per_0_1_NDVI_cooling_C": [
+   {
+    "city": "Delhi",
+    "model": 1.0,
+    "data": 0.8
+   },
+   {
+    "city": "Jaipur",
+    "model": 2.0,
+    "data": 1.8
+   }
+  ]
+ },
+ "facts": {
+  "_source": "README.md lines 218-224 (Data and training facts)",
+  "rows": [
+   {
+    "item": "Cities",
+    "value": "50, each a 40 km box at 30 m (about 1,350 x 1,350 pixels; about 89 million pixels in total)"
+   },
+   {
+    "item": "Features",
+    "value": "46 per pixel, plus 6 city-relative copies in the patches: 51 numeric channels and a land-cover class"
+   },
+   {
+    "item": "Patches",
+    "value": "64 x 64 pixels (1.9 km); about 21,000 for training (about 15 % overlap) and about 4,300 for validation (no overlap); 40 training cities, 10 validation cities"
+   },
+   {
+    "item": "Model",
+    "value": "U-Net, three down-sampling levels, about 2 M parameters, learned land-cover embedding"
+   },
+   {
+    "item": "Training",
+    "value": "`--base 32 --epochs 7`, batch 64, AdamW with one-cycle learning rate, dropout, weight decay, running average of the weights, half of the patches per epoch, random rotations and flips; on a 4-core CPU"
+   },
+   {
+    "item": "Target",
+    "value": "pixel temperature minus its city's mean (the \"anomaly\"), loss on usable pixels only"
+   }
+  ]
+ }
+}

@@ -1,0 +1,79 @@
+<section id="refs" class="sec-block">
+  <style>
+    .ps { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-card); padding: var(--s5); }
+    .ps-tag { display: inline-block; font: 700 11px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: #fff; background: var(--accent); padding: 6px 10px; border-radius: 999px; }
+    .ps h3 { font: 800 clamp(22px, 2.8vw, 32px)/1.1 var(--display); letter-spacing: -.025em; margin: 12px 0 var(--s4); max-width: 24em; }
+    .ps-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--s3); }
+    @media (max-width: 1000px) { .ps-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 520px) { .ps-grid { grid-template-columns: minmax(0, 1fr); } }
+    .ps-o { background: var(--surface-raised); border: 1px solid var(--border); border-radius: var(--r-control); padding: 12px; min-width: 0; position: relative; }
+    .ps-o i { font: 800 13px/22px var(--display); font-style: normal; width: 22px; height: 22px; border-radius: 50%; background: var(--grid); text-align: center; display: block; margin-bottom: 8px; }
+    .ps-o small { display: block; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); }
+    .ps-o b { display: block; font: 700 15px/1.25 var(--display); margin-top: 4px; }
+    .ds { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: var(--s2); }
+    .ds span { border-radius: 999px; padding: 6px 12px; font-size: 13px; border: 1px solid var(--border); background: var(--surface); }
+    .ds .y { background: color-mix(in srgb, var(--success-text) 10%, var(--surface)); border-color: color-mix(in srgb, var(--success-text) 40%, transparent); color: var(--text-primary); }
+    .ds .y::before { content: "\2713  "; color: var(--success-text); font-weight: 700; }
+    .ds .p { border-style: solid; color: var(--text-secondary); }
+    .ds .n { border-style: dashed; color: var(--text-muted); }
+    .ds-key { font-size: 12px; color: var(--text-muted); margin: 0 0 var(--s5); }
+    .refs-col h3 { font: 700 16px var(--display); margin: 0 0 8px; }
+    .refs-col ul { margin: 0; padding-left: 1.1em; font-size: 14px; color: var(--text-secondary); }
+    .refs-col li + li { margin-top: 6px; }
+  </style>
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="eyebrow">06 &middot; Problem, data &amp; links</div>
+      <h2>Built for an ISRO problem statement</h2>
+    </div>
+    <div class="ps">
+      <span class="ps-tag">ISRO &middot; problem statement</span>
+      <h3>Optimizing urban heat mitigation and cooling strategies via AI/ML</h3>
+      <div class="ps-grid">
+        <div class="ps-o"><i>1</i><small>Heat stress maps</small><b>Ranked Gi* hotspot clusters</b></div>
+        <div class="ps-o"><i>2</i><small>Drivers of urban heat</small><b>Six feature groups, split in &deg;C</b></div>
+        <div class="ps-o"><i>3</i><small>Validated AI/ML model</small><b>U-Net, R&sup2; 0.72 on 10 held-out cities</b></div>
+        <div class="ps-o"><i>4</i><small>Cooling scenarios</small><b>Trees and cool roofs, re-predicted</b></div>
+        <div class="ps-o"><i>5</i><small>Optimal intervention</small><b>Dose and &deg;C cut per hotspot, e.g. 40&nbsp;% trees</b></div>
+      </div>
+    </div>
+
+    <h3 class="sub-h">Datasets</h3>
+    <div class="ds">
+      <span class="y">Landsat 8/9 surface temperature</span>
+      <span class="y">ESA WorldCover land cover</span>
+      <span class="y">JRC GHSL urban form</span>
+      <span class="y">Copernicus DEM terrain</span>
+      <span class="p">ERA5 weather via Open-Meteo: audited, not a model input</span>
+      <span class="n">ECOSTRESS</span><span class="n">CPCB air data</span><span class="n">OpenStreetMap</span><span class="n">UT-GLOBUS</span><span class="n">SOLWEIG / InVEST</span>
+    </div>
+    <p class="ds-key">Solid green: used by the model. Outlined: collected but not a model input. Dashed: allowed by the problem statement, not used.</p>
+
+    <div class="cols2">
+      <div class="refs-col ruled">
+        <h3>Links</h3>
+        <ul>
+          <li><a href="https://github.com/Rounaksondawale/Heat_Map" rel="noopener" target="_blank">Repository: github.com/Rounaksondawale/Heat_Map</a></li>
+          <li><a href="https://github.com/Rounaksondawale/Heat_Map/tree/main/docs" rel="noopener" target="_blank">README figures (docs/)</a></li>
+        </ul>
+        <h3 style="margin-top:16px">Data sources</h3>
+        <ul>
+          <li><a href="https://planetarycomputer.microsoft.com" rel="noopener" target="_blank">Microsoft Planetary Computer</a> (Landsat, DEM and WorldCover access)</li>
+          <li><a href="https://www.usgs.gov/landsat-missions" rel="noopener" target="_blank">USGS / NASA Landsat 8 and 9</a></li>
+          <li><a href="https://esa-worldcover.org" rel="noopener" target="_blank">ESA WorldCover</a></li>
+          <li><a href="https://human-settlement.emergency.copernicus.eu" rel="noopener" target="_blank">JRC Global Human Settlement Layer (GHSL R2023A)</a></li>
+          <li><a href="https://spacedata.copernicus.eu/collections/copernicus-digital-elevation-model" rel="noopener" target="_blank">Copernicus DEM GLO-30</a></li>
+          <li><a href="https://open-meteo.com" rel="noopener" target="_blank">Open-Meteo (ERA5-based weather)</a></li>
+        </ul>
+      </div>
+      <div class="refs-col ruled">
+        <h3>References</h3>
+        <ul>
+          <li>Ronneberger, Fischer, Brox (2015). U-Net: convolutional networks for biomedical image segmentation. <a href="https://arxiv.org/abs/1505.04597" rel="noopener" target="_blank">arXiv:1505.04597</a></li>
+          <li>Ord, Getis (1995). Local spatial autocorrelation statistics: distributional issues and an application. <i>Geographical Analysis</i> 27(4), the Gi* hotspot statistic.</li>
+          <li>Shapley (1953). A value for n-person games. The basis of the driver split, one share per feature group.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>

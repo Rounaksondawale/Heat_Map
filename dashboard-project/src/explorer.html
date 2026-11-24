@@ -1,0 +1,53 @@
+<style>
+.xp { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: var(--s5); align-items: start; }
+@media (max-width: 860px) { .xp { grid-template-columns: minmax(0, 1fr); } }
+.xp-stage { position: relative; width: 100%; max-width: 640px; aspect-ratio: 1/1; border-radius: var(--r-card); overflow: hidden; background: #111; cursor: crosshair; touch-action: pan-y; }
+.xp-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.xp-tag { position: absolute; font: 600 12px/1 var(--mono); color: #fff; background: rgba(10,10,14,.68); padding: 5px 8px; border-radius: 6px; pointer-events: none; }
+.xp-tag.tl { top: 10px; left: 10px; } .xp-tag.br { bottom: 10px; right: 10px; } .xp-tag.tr { top: 10px; right: 10px; } .xp-tag.bl { bottom: 10px; left: 10px; }
+.xp-city { font: 800 clamp(28px, 4vw, 44px)/1 var(--display); letter-spacing: -.03em; margin: 0 0 4px; }
+.xp-sub { color: var(--text-muted); font-size: 13px; margin-bottom: var(--s4); }
+.xp-tiles { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: var(--s3); margin-top: var(--s4); }
+.xp-tile { background: var(--surface-raised); border: 1px solid var(--border); border-radius: var(--r-control); padding: 12px; min-width: 0; }
+.xp-tile .v { font: 750 34px/1 var(--display); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.xp-tile .l { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
+.xp-bar { height: 6px; border-radius: 3px; background: var(--grid); margin-top: 8px; overflow: hidden; }
+.xp-bar i { display: block; height: 100%; background: var(--held-out); border-radius: 3px; }
+.xp-credit { font-size: 11px; color: var(--text-muted); margin-top: 8px; }
+.xp-sl{display:block;margin:12px 0;font-size:13px}.xp-sl span{display:flex;justify-content:space-between;margin-bottom:4px}.xp-sl input{width:100%;accent-color:var(--success-text)}
+details.fold>summary{cursor:pointer;font:600 15px var(--display);padding:12px 16px;border:1px solid var(--border);border-radius:var(--r-control);background:var(--surface);list-style:none;margin-top:var(--s4)}
+details.fold[open]>summary{margin-bottom:var(--s4)}
+</style>
+<div class="card s12" id="xp">
+  <div class="ch"><div><h3>Every held-out city, from space</h3><div class="subt">The full 40 km study area at its real coordinates</div></div></div>
+  <div class="controls" id="xp-cities" role="group" aria-label="City"></div>
+  <div class="xp">
+    <div>
+      <div class="xp-stage" id="xp-stage">
+        <canvas id="xp-canvas" role="img" aria-label="Satellite image of the selected city"></canvas>
+        <span class="xp-tag tl" id="xp-ll"></span><span class="xp-tag tr">N &uarr;</span>
+        <span class="xp-tag bl" id="xp-scale">white bar = 10 km</span><span class="xp-tag br" id="xp-read"></span>
+      </div>
+      <div class="controls" style="margin-top:12px" role="group" aria-label="Layer">
+        <button type="button" class="chip" data-xl="sat" aria-pressed="true">Satellite</button>
+        <button type="button" class="chip" data-xl="veg" aria-pressed="false">Green cover</button>
+        <button type="button" class="chip" data-xl="bare" aria-pressed="false">Bare &amp; built-up</button>
+        <button type="button" class="chip" data-xl="plan" aria-pressed="false">Cooling plan</button>
+      </div>
+    </div>
+    <div>
+      <h4 class="xp-city" id="xp-name"></h4>
+      <div class="xp-sub" id="xp-sub"></div>
+      <div class="xp-tiles" id="xp-tiles"></div>
+      <div id="xp-plan" hidden>
+        <div class="xp-sub">Red = the densest built-up, low-vegetation blocks (top 10 %). Move the sliders to treat them.</div>
+        <label class="xp-sl"><span>Plant trees on open ground in hotspots <b id="xp-trees-v">0 %</b></span><input type="range" id="xp-trees" min="0" max="60" step="1" value="0"></label>
+        <label class="xp-sl"><span>Reflective roofs on hotspot buildings <b id="xp-roofs-v">0 %</b></span><input type="range" id="xp-roofs" min="0" max="100" step="1" value="0"></label>
+        <button type="button" class="chip" id="xp-best">Try the README dose: 40 % trees</button>
+        <div class="xp-tiles" id="xp-plan-out"></div>
+        <p class="xp-credit">Illustrative. Hotspots are found from the image colours. The cooling amount scales the model's own results in the README (Jaipur closes a 2.2 &deg;C gap at 40 % trees; Delhi at 99 % reflective roofs), assuming the effects add up. It is not a fresh model prediction for this image.</p>
+      </div>
+    </div>
+  </div>
+  <p class="xp-credit">Imagery: Sentinel-2 cloudless 2020 by EOX IT Services GmbH (contains modified Copernicus Sentinel data), CC BY-NC 4.0. Layers are colour-derived from the image, not model output.</p>
+</div>

@@ -1,0 +1,62 @@
+@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600&display=swap');
+/* Brick edition: a light touch of building-brick styling over the original dashboard.
+   Same layout, same sections, same charts. Only tokens, edges, dividers and small details change.
+   Primary-colour bricks appear in small doses: the top strip, section markers, studs on card edges. */
+:root {
+  --lego-red: #c91a09; --lego-yellow: #f2cd37; --lego-blue: #0055bf; --lego-green: #237841; --lego-orange: #f0731a;
+  --page: #f7f5ef; --surface: #fffdf9; --surface-raised: #ffffff;
+  --border: rgba(70,52,12,0.14); --grid: #e9e4d7; --axis: #cbc4b2;
+  --text-primary: #1e1a12; --text-secondary: #56503f; --text-muted: #70695a; --ink-muted: #8d8573;
+  --accent: #0055bf; --held-out: #0a66c2; --train: #f0731a;
+  --model-1: #9cc2ea; --model-2: #2f7fd0; --model-3: #0b3f86;
+  --bias-warm: #c91a09; --bias-cool: #0a66c2;
+  --status-warning: #f2cd37; --warn-bg: #fff5cc; --warn-text: #6b5200;
+  --success-text: #1d6b35; --critical: #c91a09;
+  --nav-bg: #f7f5ef; --fig-frame: #fffdf9;
+  --display: "Fredoka", "Bricolage Grotesque", "IBM Plex Sans", system-ui, sans-serif;
+  --stud: rgba(70,52,12,0.10);
+}
+h1, h2, h3, .brand { font-family: var(--display); }
+.hero h1, .sec-head h2 { font-weight: 500; letter-spacing: -0.01em; }
+
+/* top strip: one row of small coloured bricks instead of the thermal line */
+.topbar::after { display: none; }
+.brand-mark { width: 28px; height: 18px; border-radius: 3px; animation: none; background:
+  radial-gradient(circle at 7px 2px, #a31407 0 3px, transparent 3.6px), radial-gradient(circle at 21px 2px, #a31407 0 3px, transparent 3.6px), var(--lego-red); box-shadow: inset 0 -3px 0 rgba(0,0,0,.18); }
+
+/* section dividers: a row of studs, like a baseplate edge */
+.sec-block::before { height: 10px; background: radial-gradient(circle at 10px 5px, var(--stud) 0 3.6px, transparent 4.2px) 0 0 / 20px 10px repeat-x; opacity: 1; }
+.sec-head .eyebrow { gap: 12px; }
+.sec-head .eyebrow::before { width: 30px; height: 17px; border-radius: 3px; box-shadow: inset 0 -3px 0 rgba(0,0,0,.2); background:
+  radial-gradient(circle at 8px 2px, rgba(0,0,0,.2) 0 3px, transparent 3.6px), radial-gradient(circle at 22px 2px, rgba(0,0,0,.2) 0 3px, transparent 3.6px), var(--b, var(--lego-yellow)); }
+main > section:nth-of-type(2) { --b: var(--lego-red); } main > section:nth-of-type(3) { --b: var(--lego-yellow); } main > section:nth-of-type(4) { --b: var(--lego-blue); }
+main > section:nth-of-type(5) { --b: var(--lego-green); } main > section:nth-of-type(6) { --b: var(--lego-yellow); } main > section:nth-of-type(7) { --b: var(--lego-red); }
+
+/* hero: faint baseplate studs in the background */
+.hero { background:
+  radial-gradient(circle at 12px 12px, rgba(70,52,12,.06) 0 4px, transparent 4.8px) 0 0 / 24px 24px,
+  radial-gradient(50% 70% at 88% 10%, color-mix(in srgb, var(--lego-yellow) 24%, transparent), transparent 65%),
+  radial-gradient(45% 60% at 4% 100%, color-mix(in srgb, var(--lego-blue) 10%, transparent), transparent 65%), var(--page); }
+.hero .eyebrow { color: var(--lego-blue); }
+.hero-stage { border-radius: 10px; border-bottom-width: 3px; }
+
+/* bricks: slightly squarer corners, a thin bottom edge, two or three studs peeking over the top */
+.card, .kpi, .vz-stat, .vz-card, .xp-tile, .hw-steps button, .app-step, .cost-grid, .cost-stats div, .hero .kpi { border-radius: 8px; box-shadow: 0 2px 0 rgba(70,52,12,.09); }
+.card::after, .vz-card::after, .app-step::before { content: ""; position: absolute; top: -4px; right: 22px; width: 54px; height: 5px; pointer-events: none;
+  background: radial-gradient(circle at 8px 5px, var(--stud) 0 3px, transparent 3.6px) 0 0 / 18px 5px repeat-x; filter: drop-shadow(0 -1px 0 rgba(70,52,12,.10)); }
+.vz-card, .app-step { position: relative; }
+.card:hover, .app-step:hover { box-shadow: 0 2px 0 rgba(70,52,12,.09), 0 12px 24px -18px rgba(70,52,12,.35); }
+.app-n { border-radius: 4px; background: var(--lego-yellow); color: #3b2f00; box-shadow: inset 0 -2px 0 rgba(0,0,0,.15); }
+.hw-steps .n { border-radius: 5px; }
+.hw-steps button.on .n { background: var(--lego-yellow); color: #3b2f00; }
+.chip, .btn, .seg button, .theme button { border-radius: 6px; }
+.badge { border-radius: 5px; }
+.tbl-wrap { border-radius: 8px; }
+.hero .kpi.hero-kpi { border-top-color: var(--lego-blue); }
+.kpi { border-top-width: 4px; }
+.kpi.hero-kpi { border-top-color: var(--lego-yellow); }
+.vz-stat svg, .stage-list .n { color: var(--lego-blue); }
+.topbar { box-shadow: 0 1px 0 rgba(70,52,12,.06); }
+.nav a[aria-current="true"] { box-shadow: inset 0 -3px 0 var(--lego-yellow); }
+details.fold > summary { border-radius: 8px; }
+footer { background: radial-gradient(circle at 10px 5px, var(--stud) 0 3.6px, transparent 4.2px) 0 0 / 20px 10px repeat-x; padding-top: calc(var(--s5) + 10px); }

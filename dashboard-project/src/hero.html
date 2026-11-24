@@ -1,0 +1,35 @@
+<section id="top" class="hero">
+  <div class="wrap">
+    <div class="hero-top">
+      <div class="hero-copy">
+        <div class="eyebrow">ISRO problem statement &middot; urban heat</div>
+        <h1>Finding the <span class="hot">hottest blocks</span> in <span data-bind="n_cities">50</span> Indian cities, <span class="cool">from space</span></h1>
+        <p class="lede">A U-Net reads Landsat and land-cover layers and predicts which parts of a city run hotter or cooler than the city's own average (late-morning pass, March to May). It learned from <span data-bind="n_train">40</span> cities and was scored on <span data-bind="n_val">10</span> held out from training.</p>
+        <div class="stamp">
+          <span>Data last updated <time id="stamp-date" datetime="2026-11-03">2026-11-03</time></span>
+          <span>source: README tables (commit <code id="stamp-hash">6e20bf7</code>)</span>
+        </div>
+      </div>
+      <div class="hero-stage">
+        <div id="hero-3d" role="img" aria-label="Map of India with the 50 study cities"></div>
+        <span class="h3-hint" aria-hidden="true">50 cities &middot; hover or tap a dot</span>
+        <div class="h3-ui">
+          <div class="h3-chips" role="group" aria-label="Dot size shows">
+            <button type="button" class="chip" data-h3m="R2_within" aria-pressed="true">R²</button>
+            <button type="button" class="chip" data-h3m="spearman" aria-pressed="false">Spearman</button>
+            <button type="button" class="chip" data-h3m="hot_AUC" aria-pressed="false">Hot AUC</button>
+            <button type="button" class="chip" data-h3m="hot_F1" aria-pressed="false">Hot F1</button>
+          </div>
+          <div class="h3-legend">
+            <span class="li"><span class="sw" style="background:var(--train)"></span><span>40 cities it learned from</span></span>
+            <span class="li"><span class="sw" style="background:var(--held-out)"></span><span>10 held-out cities, sized by <span id="h3-metric">R² inside city</span></span></span>
+          </div>
+        </div>
+        <div id="hero-tip" class="h3-tip" hidden></div>
+      </div>
+    </div>
+    <p class="src">Source: per_city.json (README.md L152-164) &middot; positions from cities.json (extraction/build_dataset.py)</p>
+    <div class="kpis" id="kpis"></div>
+    <p class="kpi-cap" id="kpi-cap"></p>
+  </div>
+</section>

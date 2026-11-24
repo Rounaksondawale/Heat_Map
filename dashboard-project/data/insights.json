@@ -1,0 +1,53 @@
+{
+  "_source": "dashboard-project/04_insights.md (derived from per_city.json, metrics.json, cooling.json, README.md; [fig text] = number printed on a docs/ figure)",
+  "kpis": [
+    {"label": "R² inside the city (offset removed)", "value": 0.74, "unit": "", "meaning": "Explains about three quarters of the within-city temperature variation on 10 unseen cities", "_source": "per_city.json mean.R2_anomaly; metrics.json headline.rows[0].final; README.md:116,164,178"},
+    {"label": "Hotspot AUC", "value": 0.93, "unit": "", "meaning": "A truly hot pixel is ranked above another pixel 93 % of the time (random 0.50)", "_source": "per_city.json mean.hot_AUC; README.md:118,164"},
+    {"label": "Rank correlation (Spearman)", "value": 0.86, "unit": "", "meaning": "Orders neighbourhoods from cool to hot almost as the satellite does", "_source": "per_city.json mean.spearman; README.md:117,164"},
+    {"label": "Pattern error (MAE)", "value": 1.12, "unit": "°C", "meaning": "Typical pixel error with the city mean supplied", "_source": "per_city.json mean.MAE; README.md:164,166"},
+    {"label": "Held-out cities worse than city average", "value": 0, "of": 10, "unit": "cities", "meaning": "Beats the trivial 'every pixel = city mean' guess everywhere (first model: 1)", "_source": "metrics.json headline.rows[4]; README.md:119"},
+    {"label": "Coverage", "value": 50, "unit": "cities (about 89 M pixels at 30 m)", "meaning": "40 training + 10 held-out cities", "_source": "metrics.json facts.rows[0]; cities.json n_cities; README.md:218,221"}
+  ],
+  "per_city_stats": {
+    "_source": "per_city.json cities[] (README.md:154-163); median = mean of 5th and 6th sorted values",
+    "MAE":        {"best": ["Amritsar", 0.54],  "worst": ["Dehradun", 1.96], "min": 0.54, "median": 0.99,  "max": 1.96, "mean_of_rows": 1.116, "readme_mean": 1.12},
+    "R2_within":  {"best": [["Jaipur", "Kolkata"], 0.78], "worst": ["Lucknow", 0.64], "min": 0.64, "median": 0.73, "max": 0.78, "mean_of_rows": 0.724, "readme_mean": 0.72},
+    "R2_anomaly": {"best": [["Chennai", "Jaipur", "Kolkata"], 0.79], "worst": ["Lucknow", 0.64], "min": 0.64, "median": 0.755, "max": 0.79, "mean_of_rows": 0.745, "readme_mean": 0.74},
+    "spearman":   {"best": [["Coimbatore", "Kolkata"], 0.91], "worst": ["Lucknow", 0.74], "min": 0.74, "median": 0.87, "max": 0.91, "mean_of_rows": 0.863, "readme_mean": 0.86},
+    "hot_AUC":    {"best": ["Amritsar", 0.97], "worst": ["Chennai", 0.90], "min": 0.90, "median": 0.935, "max": 0.97, "mean_of_rows": 0.936, "readme_mean": 0.93},
+    "hot_F1":     {"best": ["Amritsar", 0.76], "worst": [["Chennai", "Nagpur"], 0.54], "min": 0.54, "median": 0.595, "max": 0.76, "mean_of_rows": 0.605, "readme_mean": 0.60},
+    "hot_bias":   {"best": ["Bhubaneswar", -0.18], "worst": ["Dehradun", -3.99], "min": -3.99, "median": -1.135, "max": -0.18, "mean_of_rows": -1.347, "readme_mean": -1.35, "mean_excl_Dehradun": -1.053},
+    "thresholds": {"R2_within_lt_0": 0, "R2_within_ge_0.7": 7, "R2_anomaly_ge_0.7": 8, "hot_AUC_ge_0.9": 10, "hot_bias_lt_minus1": 7}
+  },
+  "model_comparison": {
+    "_source": "metrics.json models.rows (README.md:176-178); rel = (final - other) / |other|",
+    "final_vs_first":   {"R2_anomaly": [0.20, "+37.0%"], "spearman": [0.08, "+10.3%"], "hot_AUC": [0.05, "+5.7%"], "hot_F1": [0.10, "+20.0%"], "hot_bias_C": [0.10, "6.9% smaller underestimate"], "unexplained_variance_reduction": "(0.46-0.26)/0.46 = 43%"},
+    "final_vs_smaller": {"R2_anomaly": [0.21, "+39.6%"], "spearman": [0.12, "+16.2%"], "hot_AUC": [0.04, "+4.5%"], "hot_F1": [0.13, "+27.7%"], "hot_bias_C": [1.10, "44.9% smaller underestimate"]},
+    "first_to_final_per_city_R2_anomaly_fig_text": {"Bengaluru": [0.09, 0.76], "Bhubaneswar": [0.12, 0.73], "Kolkata": [0.14, 0.79], "_source": "docs/fig_per_city_r2.png (printed labels)"}
+  },
+  "cooling_derived": {
+    "_source": "cooling.json rows (README.md:50-52); not_explained = obs_gap_C - pred_gap_C; seen = pred/obs",
+    "rows": [
+      {"area": "Jaipur, strongest 600 m hotspot", "split": "val", "not_explained_C": 2.2, "share_seen": 0.50},
+      {"area": "Delhi, dense 600 m block", "split": "train", "not_explained_C": 2.5, "share_seen": 0.44},
+      {"area": "Delhi, 1.2 x 1.8 km area", "split": "train", "not_explained_C": 0.3, "share_seen": 0.77}
+    ]
+  },
+  "insights": [
+    {"text": "The model reads heat patterns well in unseen cities: R² 0.74 (offset removed), Spearman 0.86, AUC 0.93, no city below the city-mean baseline.", "_source": "per_city.json mean; metrics.json headline; README.md:114-119,164"},
+    {"text": "The final model cut unexplained variance by 43 % and raised hotspot F1 by 20 % over the first model; the anomaly target alone did not (smaller anomaly model R² 0.53, F1 0.47).", "_source": "metrics.json models.rows; README.md:174-178"},
+    {"text": "The three cities that failed under the first model are now in the top half: Bengaluru 0.09→0.76, Bhubaneswar 0.12→0.73, Kolkata 0.14→0.79.", "_source": "docs/fig_per_city_r2.png [fig text]; per_city.json R2_anomaly; README.md:125-128"},
+    {"text": "Hot pixels are underestimated by 1.35 °C on average, much of it Dehradun (-3.99 °C); without Dehradun the mean is -1.05 °C.", "_source": "per_city.json hot_bias; README.md:232"},
+    {"text": "City quality varies: Amritsar is best (MAE 0.54, AUC 0.97, F1 0.76), Lucknow weakest on pattern (R² 0.64, Spearman 0.74); Dehradun and Coimbatore have high MAE but good ranking.", "_source": "per_city.json cities"},
+    {"text": "On the hottest 600 m blocks the model sees only about half the observed excess (Jaipur 2.2 of 4.4 °C, Delhi 2.0 of 4.5 °C), so doses close only the explainable part.", "_source": "cooling.json rows; README.md:48-52"},
+    {"text": "Vegetation dominates: shuffling it drops R² by 0.89; planting 45 % beats cool roofs on 99 % in the Delhi block; the model's NDVI effect is 11 to 25 % steeper than the data's.", "_source": "metrics.json group_importance, vegetation_check; cooling.json rows[1]; README.md:135-141"}
+  ],
+  "inconsistencies": [
+    {"text": "'R² inside the city' 0.74 in README hero/headline is the offset-removed metric; the per-city 'R² inside' column averages 0.72.", "_source": "README.md:20,116,164; per_city.json mean"},
+    {"text": "The hot_AUC rows average 0.936 (rounds to 0.94), but the README mean is 0.93; within rounding tolerance.", "_source": "per_city.json cities[].hot_AUC, mean.hot_AUC"},
+    {"text": "README says 2.4 °C is not explained for the Delhi block; the table gives 4.5 - 2.0 = 2.5 °C.", "_source": "README.md:13,51"},
+    {"text": "Delhi area dose pools (190 ha greenable + 158 ha built) exceed the 211 ha area, so the pools likely overlap; uncertain.", "_source": "README.md:52; docs/fig_cooling_curves.png [fig text]; models/simulate_cooling.py:10-12,110"},
+    {"text": "The land-cover pixel total (17.81 M) is about all pixels of 10 cities (89 M / 50 × 10), despite 'usable pixels' masking; uncertain.", "_source": "metrics.json landcover; README.md:112,218"},
+    {"text": "Delhi (hotspot quality, cooling, drivers) is a training city per the default split; only Jaipur is held out.", "_source": "cities.json; README.md:111"}
+  ]
+}

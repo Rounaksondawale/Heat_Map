@@ -1,0 +1,678 @@
+<title>HEAT_MAP Neon Edition</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Monoton&family=Chakra+Petch:wght@500;600;700&family=Figtree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+/* Design plan. Single committed look: a night-time sunset arcade.
+   Layout: sticky mission menu, a loading-screen hero over a painted sunset, then one full-width "level" per topic.
+   Marks use validated mid-lightness hues; the brighter neon tints are only for text, glows and chrome. */
+:root {
+  --night: #12041f; --dusk: #2a0b4d; --plum: #4a1466; --panel: #1b0833;
+  --pink: #ff2e93; --cyan: #19e3ff; --amber: #ffb347; --violet: #9b6bd6;
+  --m-cyan: #00a0c4; --m-pink: #f2318f; --m-amber: #d4761a; --m-violet: #8a63d2;
+  --ink: #fbeaff; --ink2: #cfb6e6; --muted: #a58bc4; --line: rgba(255,255,255,.14);
+  --display: "Monoton", "Chakra Petch", Impact, sans-serif;
+  --head: "Chakra Petch", "Arial Narrow", system-ui, sans-serif;
+  --body: "Figtree", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  --chamfer: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 14px 100%, 0 calc(100% - 14px));
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 76px; -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--night); color: var(--ink); font: 400 16px/1.55 var(--body); overflow-x: hidden; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 60; background: var(--night); }
+a { color: var(--cyan); text-underline-offset: 3px; }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
+h1, h2, h3, h4, p { margin: 0; }
+code, .mono { font-family: var(--mono); font-size: .9em; }
+.w { max-width: 1180px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ---------- menu bar ---------- */
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 50; background: rgba(18,4,31,.88); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+.bar .w { display: flex; align-items: center; gap: 18px; min-height: 54px; }
+.logo { font: 400 22px/1 var(--display); color: var(--pink); text-decoration: none; text-shadow: 0 0 14px rgba(255,46,147,.7); white-space: nowrap; }
+.menu { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; min-width: 0; flex: 1; }
+.menu::-webkit-scrollbar { display: none; }
+.menu a { font: 600 13px/1 var(--head); letter-spacing: .12em; text-transform: uppercase; color: var(--ink2); text-decoration: none; padding: 10px 12px; white-space: nowrap; border-bottom: 2px solid transparent; }
+.menu a:hover { color: var(--ink); border-color: var(--cyan); }
+
+/* ---------- hero = loading screen ---------- */
+.hero { position: relative; overflow: hidden; min-height: 680px; isolation: isolate; background: var(--night); }
+.scene { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -2; }
+.floor { position: absolute; left: -60%; right: -60%; bottom: 0; height: 150px; z-index: -1; transform: perspective(260px) rotateX(58deg); transform-origin: 50% 0; animation: floor 2.4s linear infinite;
+  background: linear-gradient(to bottom, rgba(25,227,255,.0) 0, rgba(25,227,255,.0) calc(100% - 2px), rgba(25,227,255,.7) calc(100% - 2px)) 0 0 / 100% 40px, linear-gradient(90deg, rgba(255,46,147,.75) 0 2px, transparent 2px) 0 0 / 72px 100%; -webkit-mask-image: linear-gradient(transparent, #000 35%); mask-image: linear-gradient(transparent, #000 35%); }
+@keyframes floor { to { background-position: 0 40px, 0 0; } }
+.hero-in { position: relative; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 32px; align-items: center; padding-block: 56px 190px; }
+.hero::after { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(90deg, rgba(18,4,31,.82), rgba(18,4,31,.35) 55%, transparent); pointer-events: none; }
+.tag { display: inline-flex; gap: 8px; align-items: center; font: 600 12px/1 var(--head); letter-spacing: .16em; text-transform: uppercase; color: var(--cyan); border: 1px solid rgba(25,227,255,.55); padding: 7px 12px; background: rgba(25,227,255,.08); }
+.hero h1 { font: 400 clamp(40px, 7.4vw, 100px)/.95 var(--display); white-space: nowrap; margin: 20px 0 14px; color: #fff; letter-spacing: .01em;
+  background: linear-gradient(180deg, #fff 0%, #ffd0ec 30%, var(--pink) 62%, #ff7a3c 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; filter: drop-shadow(0 0 18px rgba(255,46,147,.65)); }
+.wanted { display: flex; align-items: center; gap: 12px; font: 700 13px/1 var(--head); letter-spacing: .2em; color: var(--ink2); text-transform: uppercase; }
+.stars { display: inline-flex; gap: 4px; }
+.stars svg { width: 24px; height: 24px; fill: var(--amber); filter: drop-shadow(0 0 7px rgba(255,179,71,.9)); animation: flick 1.6s ease-in-out infinite; }
+.stars svg:nth-child(2) { animation-delay: .15s; } .stars svg:nth-child(3) { animation-delay: .3s; } .stars svg:nth-child(4) { animation-delay: .45s; } .stars svg:nth-child(5) { animation-delay: .6s; }
+@keyframes flick { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+.lede { font-size: clamp(17px, 2.2vw, 21px); color: var(--ink); max-width: 30em; margin-top: 18px; text-shadow: 0 2px 12px rgba(0,0,0,.6); }
+.cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 26px; }
+.btn { display: inline-flex; align-items: center; gap: 8px; font: 700 14px/1 var(--head); letter-spacing: .14em; text-transform: uppercase; text-decoration: none; padding: 14px 20px; clip-path: var(--chamfer); cursor: pointer; border: 0; }
+.btn.p { background: var(--pink); color: #20041a; box-shadow: 0 0 22px rgba(255,46,147,.55); }
+.btn.s { background: rgba(25,227,255,.14); color: var(--cyan); box-shadow: inset 0 0 0 1px var(--cyan); }
+.btn:hover { filter: brightness(1.12); }
+.load { background: rgba(14,3,26,.82); border: 1px solid rgba(255,255,255,.18); padding: 18px 18px 20px; clip-path: var(--chamfer); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.load h2 { font: 700 12px/1 var(--head); letter-spacing: .22em; color: var(--cyan); margin-bottom: 14px; text-transform: uppercase; }
+.lrow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; font: 500 12px/1.2 var(--mono); color: var(--ink2); margin-top: 12px; text-transform: uppercase; letter-spacing: .06em; }
+.lrow b { color: var(--ink); font-weight: 600; }
+.lbar { grid-column: 1 / -1; height: 10px; background: rgba(255,255,255,.1); overflow: hidden; }
+.lbar i { display: block; height: 100%; width: 100%; background: repeating-linear-gradient(90deg, var(--pink) 0 10px, #c21a72 10px 12px); transform-origin: left; animation: fill 1.6s cubic-bezier(.2,.8,.2,1) both; }
+.lrow:nth-of-type(3) .lbar i { animation-delay: .35s; background: repeating-linear-gradient(90deg, var(--cyan) 0 10px, #0aa3bd 10px 12px); }
+.lrow:nth-of-type(4) .lbar i { animation-delay: .7s; background: repeating-linear-gradient(90deg, var(--amber) 0 10px, #c98424 10px 12px); }
+@keyframes fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.load p { font: 500 12px/1.4 var(--mono); color: var(--muted); margin-top: 16px; }
+
+/* ---------- sections ---------- */
+.sec { padding-block: 84px 20px; position: relative; }
+.eyebrow { display: inline-flex; align-items: center; gap: 10px; font: 700 12px/1 var(--head); letter-spacing: .22em; text-transform: uppercase; color: var(--cyan); }
+.eyebrow::before { content: ""; width: 34px; height: 3px; background: linear-gradient(90deg, var(--cyan), var(--pink)); box-shadow: 0 0 10px var(--cyan); }
+.sec h2 { font: 700 clamp(30px, 4.6vw, 52px)/1.02 var(--head); text-transform: uppercase; letter-spacing: .01em; margin: 14px 0 8px; text-wrap: balance; text-shadow: 0 0 22px rgba(255,46,147,.35); }
+.sec .sub { color: var(--ink2); max-width: 44em; }
+.sec .head { margin-bottom: 30px; }
+.panel { background: linear-gradient(180deg, rgba(255,255,255,.075), rgba(255,255,255,.03)); box-shadow: inset 0 0 0 1px var(--line); clip-path: var(--chamfer); padding: 22px; min-width: 0; }
+.lab { font: 600 12px/1 var(--head); letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+.num { font-family: var(--head); font-variant-numeric: tabular-nums; }
+
+/* HUD stats */
+.hud { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; margin-top: -92px; position: relative; z-index: 2; }
+.hud div { background: rgba(14,3,26,.9); box-shadow: inset 0 0 0 1px var(--line); padding: 16px 14px; clip-path: var(--chamfer); min-width: 0; }
+.hud b { display: block; font: 700 clamp(26px, 3.4vw, 40px)/1 var(--head); color: #fff; text-shadow: 0 0 16px rgba(25,227,255,.55); font-variant-numeric: tabular-nums; }
+.hud b small { font-size: .5em; color: var(--cyan); margin-left: 2px; }
+.hud span { display: block; margin-top: 8px; font-size: 12px; color: var(--ink2); }
+@media (max-width: 960px) { .hud { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: -70px; } }
+@media (max-width: 520px) { .hud { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* missions */
+.missions { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+@media (max-width: 1050px) { .missions { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .missions { grid-template-columns: minmax(0, 1fr); } }
+.mission { display: flex; flex-direction: column; gap: 12px; }
+.mno { font: 700 12px/1 var(--head); letter-spacing: .2em; color: #20041a; background: var(--amber); display: inline-block; padding: 6px 10px; align-self: flex-start; }
+.mission.bonus .mno { background: var(--cyan); }
+.mission h3 { font: 700 22px/1.1 var(--head); text-transform: uppercase; }
+.mission ul { margin: 0; padding-left: 1.1em; color: var(--ink2); font-size: 14px; }
+.mission li + li { margin-top: 5px; }
+.file { font: 500 12px/1.3 var(--mono); color: var(--cyan); background: rgba(25,227,255,.09); padding: 6px 8px; word-break: break-word; }
+.reward { margin-top: auto; border-top: 1px dashed var(--line); padding-top: 12px; }
+.reward b { font: 700 28px/1 var(--head); color: var(--amber); text-shadow: 0 0 14px rgba(255,179,71,.5); font-variant-numeric: tabular-nums; }
+.reward span { display: block; font-size: 12px; color: var(--ink2); margin-top: 4px; }
+
+/* cheat menu (simulator) */
+.cheat { margin-top: 16px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 28px; align-items: center; }
+@media (max-width: 800px) { .cheat { grid-template-columns: minmax(0, 1fr); } }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 14px; }
+.chip { font: 600 13px/1 var(--head); letter-spacing: .08em; text-transform: uppercase; padding: 10px 14px; background: transparent; color: var(--ink2); border: 1px solid var(--line); cursor: pointer; }
+.chip[aria-pressed="true"] { color: #20041a; background: var(--cyan); border-color: var(--cyan); box-shadow: 0 0 14px rgba(25,227,255,.5); }
+.chip:disabled { opacity: .35; cursor: not-allowed; }
+input[type=range] { width: 100%; accent-color: var(--pink); height: 28px; }
+.gap-big { font: 700 clamp(52px, 8vw, 88px)/1 var(--head); color: #fff; text-shadow: 0 0 24px rgba(255,46,147,.7); font-variant-numeric: tabular-nums; }
+.track { position: relative; height: 18px; background: rgba(255,255,255,.1); margin: 12px 0 6px; overflow: visible; }
+.track i { display: block; height: 100%; background: linear-gradient(90deg, var(--m-pink), #ff7a3c); transition: width .12s; }
+.track em { position: absolute; top: -6px; bottom: -6px; width: 3px; background: var(--cyan); box-shadow: 0 0 10px var(--cyan); }
+.note { font-size: 13px; color: var(--muted); }
+
+/* map */
+.mapgrid { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 22px; align-items: start; }
+@media (max-width: 880px) { .mapgrid { grid-template-columns: minmax(0, 1fr); } }
+.radar { position: relative; background: radial-gradient(60% 60% at 50% 50%, rgba(25,227,255,.12), rgba(18,4,31,0) 70%), repeating-radial-gradient(circle at 50% 50%, rgba(25,227,255,.12) 0 1px, transparent 1px 46px); }
+.radar svg { display: block; width: 100%; height: auto; }
+.dot-h { cursor: pointer; }
+.dot-h .core { fill: var(--cyan); stroke: #0b2a33; stroke-width: 2; }
+.dot-h .ring { fill: none; stroke: var(--cyan); stroke-width: 2; animation: ping 2.4s ease-out infinite; transform-box: fill-box; transform-origin: center; }
+.dot-h:nth-child(odd) .ring { animation-delay: 1.1s; }
+.dot-h.on .core { fill: #fff; stroke: var(--pink); stroke-width: 4; }
+@keyframes ping { 0% { transform: scale(.6); opacity: .9; } 100% { transform: scale(2.4); opacity: 0; } }
+.dot-t { fill: var(--pink); opacity: .85; }
+.city-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+.city-tabs button { font: 600 12px/1 var(--head); letter-spacing: .1em; text-transform: uppercase; padding: 8px 10px; background: transparent; color: var(--ink2); border: 1px solid var(--line); cursor: pointer; }
+.city-tabs button[aria-pressed="true"] { background: var(--pink); color: #20041a; border-color: var(--pink); }
+.shot { position: relative; aspect-ratio: 1 / 1; max-width: 100%; background: #0d0418 center / cover no-repeat; box-shadow: inset 0 0 0 1px var(--line); }
+.shot::after { content: ""; position: absolute; inset: 0; background: repeating-linear-gradient(0deg, rgba(0,0,0,.18) 0 2px, transparent 2px 4px); pointer-events: none; }
+.shot .cross { position: absolute; left: 50%; top: 50%; width: 26px; height: 26px; margin: -13px 0 0 -13px; border: 2px solid #fff; border-radius: 50%; box-shadow: 0 0 10px #000; z-index: 1; }
+.shot .tagbox { position: absolute; z-index: 1; font: 600 11px/1 var(--mono); color: #fff; background: rgba(10,3,20,.78); padding: 5px 7px; }
+.cityline { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 620px) { .cityline { grid-template-columns: minmax(0, 1fr); } }
+.cname { font: 700 clamp(30px, 4vw, 46px)/1 var(--head); text-transform: uppercase; }
+.score { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 14px; }
+.score div { display: grid; grid-template-columns: 96px minmax(0, 1fr) 44px; gap: 8px; align-items: center; font-size: 13px; color: var(--ink2); }
+.score b { text-align: right; color: #fff; font: 600 14px var(--mono); }
+
+/* bars */
+.bars { display: grid; gap: 8px; }
+.brow { display: grid; grid-template-columns: 30px 118px minmax(0, 1fr) 54px; gap: 10px; align-items: center; font-size: 14px; }
+.brow .t { height: 16px; background: rgba(255,255,255,.09); position: relative; }
+.brow .t i, .bar-i { display: block; height: 100%; transform-origin: left; animation: fill .9s cubic-bezier(.2,.8,.2,1) both; }
+.brow b { text-align: right; font: 600 14px var(--mono); }
+.brow .rk { font: 700 13px/22px var(--head); text-align: center; background: rgba(255,255,255,.1); width: 26px; height: 22px; }
+.brow.r1 .rk { background: #e8b84a; color: #2a1900; } .brow.r2 .rk { background: #c4c9d6; color: #1b1e2a; } .brow.r3 .rk { background: #c98a52; color: #2a1400; }
+.brow:hover .t { box-shadow: 0 0 0 1px var(--cyan); }
+.avg { position: absolute; top: -4px; bottom: -4px; width: 2px; background: #fff; opacity: .8; }
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 18px; }
+@media (max-width: 560px) { .brow { grid-template-columns: 26px 92px minmax(0, 1fr) 46px; gap: 6px; font-size: 13px; } }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--ink2); margin-bottom: 12px; }
+.legend span::before { content: ""; display: inline-block; width: 12px; height: 12px; background: var(--c); margin-right: 7px; vertical-align: -1px; }
+.mgroup { margin-top: 14px; }
+.mgroup h4 { font: 600 13px/1 var(--head); letter-spacing: .14em; text-transform: uppercase; color: var(--ink2); margin-bottom: 6px; }
+.mrow { display: grid; grid-template-columns: minmax(0, 1fr) 46px; gap: 8px; align-items: center; margin-top: 3px; }
+.mrow .t { height: 9px; background: rgba(255,255,255,.08); } .mrow b { font: 500 12px var(--mono); text-align: right; }
+.two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+@media (max-width: 880px) { .two { grid-template-columns: minmax(0, 1fr); } }
+.three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+@media (max-width: 880px) { .three { grid-template-columns: minmax(0, 1fr); } }
+.twist { margin-top: 16px; border-left: 4px solid var(--amber); padding: 6px 0 6px 16px; color: var(--ink); }
+.twist b { color: var(--amber); font-family: var(--head); letter-spacing: .1em; text-transform: uppercase; }
+
+/* garage */
+.belt { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; position: relative; }
+@media (max-width: 800px) { .belt { grid-template-columns: minmax(0, 1fr); gap: 14px; } }
+.stn { position: relative; padding: 18px; background: rgba(14,3,26,.7); box-shadow: inset 0 0 0 1px var(--line); margin-right: 22px; min-width: 0; }
+.stn:last-child { margin-right: 0; }
+.stn::after { content: ""; position: absolute; top: 50%; right: -22px; width: 22px; height: 3px; background: linear-gradient(90deg, var(--pink), var(--cyan)); box-shadow: 0 0 10px var(--pink); }
+.stn:last-child::after { display: none; }
+.stn svg { width: 52px; height: 52px; stroke: var(--cyan); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 6px rgba(25,227,255,.6)); }
+.stn h3 { font: 700 18px/1.1 var(--head); text-transform: uppercase; margin: 10px 0 6px; }
+.stn p { font-size: 13px; color: var(--ink2); }
+.pulse { position: absolute; top: calc(50% - 5px); right: -27px; width: 10px; height: 10px; border-radius: 50%; background: #fff; box-shadow: 0 0 12px #fff, 0 0 20px var(--pink); animation: run 2s linear infinite; z-index: 2; }
+.stn:last-child .pulse { display: none; }
+@keyframes run { 0% { transform: translateX(-90px); opacity: 0; } 20% { opacity: 1; } 80% { opacity: 1; } 100% { transform: translateX(28px); opacity: 0; } }
+@media (max-width: 800px) { .stn { margin-right: 0; } .stn::after, .pulse { display: none; } }
+.stack { display: flex; height: 38px; margin: 10px 0 8px; gap: 2px; }
+.stack i { display: block; min-width: 3px; }
+.spec { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.spec span { font: 500 12px/1 var(--mono); padding: 7px 9px; background: rgba(255,255,255,.07); color: var(--ink2); }
+.spec b { color: #fff; font-weight: 600; }
+
+/* loot */
+.loot { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+@media (max-width: 1000px) { .loot { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .loot { grid-template-columns: minmax(0, 1fr); } }
+.drop svg { width: 72px; height: 72px; display: block; margin-bottom: 10px; }
+.drop h3 { font: 700 17px/1.15 var(--head); text-transform: uppercase; }
+.drop p { font-size: 13px; color: var(--ink2); margin-top: 6px; }
+.drop em { display: block; font: 600 11px/1.3 var(--mono); font-style: normal; color: var(--amber); margin-top: 8px; }
+.ds { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.ds span { font-size: 13px; padding: 7px 12px; border: 1px solid var(--line); color: var(--ink2); }
+.ds .y { border-color: rgba(25,227,255,.6); color: var(--ink); background: rgba(25,227,255,.1); }
+.ds .y::before { content: "\2713  "; color: var(--cyan); }
+.ds .p { border-style: solid; }
+.ds .n { border-style: dashed; color: var(--muted); }
+
+/* hideout */
+.hide { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 28px; align-items: center; }
+@media (max-width: 760px) { .hide { grid-template-columns: minmax(0, 1fr); } }
+.donut { position: relative; width: 240px; max-width: 100%; margin: 0 auto; }
+.donut svg { display: block; width: 100%; height: auto; }
+.donut .mid { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; }
+.donut .mid b { font: 700 32px/1 var(--head); text-shadow: 0 0 16px rgba(255,46,147,.6); font-variant-numeric: tabular-nums; }
+.donut .mid span { font-size: 12px; color: var(--ink2); margin-top: 4px; }
+.crow { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.crow:last-child { border-bottom: 0; }
+.crow .d { width: 14px; height: 14px; }
+.crow b { font: 700 16px var(--head); text-transform: uppercase; letter-spacing: .04em; }
+.crow small { display: block; font-size: 12px; color: var(--muted); }
+.crow .amt { font: 700 22px var(--head); font-variant-numeric: tabular-nums; text-align: right; }
+.crow .amt small { display: inline; font: 500 12px var(--body); margin-left: 6px; }
+.crow.off { opacity: .75; } .crow.off .d { border: 2px dashed var(--muted); }
+.pills { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.pills span { font: 600 12px/1 var(--head); letter-spacing: .1em; text-transform: uppercase; padding: 9px 12px; background: rgba(155,107,214,.18); color: var(--ink); box-shadow: inset 0 0 0 1px rgba(155,107,214,.6); }
+
+/* glitches */
+.glitches { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 800px) { .glitches { grid-template-columns: minmax(0, 1fr); } }
+.gl { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 12px; padding: 14px; background: rgba(255,255,255,.05); box-shadow: inset 0 0 0 1px var(--line); }
+.gl svg { width: 30px; height: 30px; stroke: var(--amber); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.gl b { display: block; font: 700 15px/1.2 var(--head); text-transform: uppercase; letter-spacing: .04em; }
+.gl p { font-size: 13px; color: var(--ink2); margin-top: 3px; }
+
+/* controls */
+.code { position: relative; background: #0b0316; box-shadow: inset 0 0 0 1px var(--line); }
+.code pre { margin: 0; padding: 18px 16px; overflow-x: auto; font: 500 13px/1.7 var(--mono); color: #e9d9ff; }
+.code pre .c { color: #8f78ad; }
+.copy { position: absolute; top: 8px; right: 8px; font: 600 11px/1 var(--head); letter-spacing: .12em; text-transform: uppercase; padding: 8px 10px; background: rgba(25,227,255,.14); color: var(--cyan); border: 1px solid rgba(25,227,255,.5); cursor: pointer; }
+.psbox { margin-top: 26px; }
+.psbox h3 { font: 700 clamp(22px, 3vw, 32px)/1.1 var(--head); text-transform: uppercase; margin: 12px 0 16px; max-width: 24em; }
+.ps5 { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 1000px) { .ps5 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .ps5 { grid-template-columns: minmax(0, 1fr); } }
+.ps5 div { padding: 12px; background: rgba(255,255,255,.06); box-shadow: inset 0 0 0 1px var(--line); }
+.ps5 small { display: block; font: 600 11px/1.2 var(--head); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.ps5 b { display: block; font: 600 15px/1.25 var(--head); margin-top: 6px; }
+.links { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 16px; }
+@media (max-width: 800px) { .links { grid-template-columns: minmax(0, 1fr); } }
+.links h3 { font: 700 15px var(--head); letter-spacing: .14em; text-transform: uppercase; color: var(--cyan); margin-bottom: 10px; }
+.links ul { margin: 0; padding-left: 1.1em; font-size: 14px; color: var(--ink2); }
+.links li + li { margin-top: 6px; }
+footer { margin-top: 70px; padding-block: 50px 70px; text-align: center; border-top: 1px solid var(--line); background: linear-gradient(180deg, transparent, rgba(255,46,147,.1)); }
+footer h2 { font: 400 clamp(30px, 6vw, 60px)/1 var(--display); color: var(--cyan); text-shadow: 0 0 20px rgba(25,227,255,.7); }
+footer p { color: var(--ink2); margin-top: 12px; }
+footer small { display: block; margin-top: 18px; color: var(--muted); font-size: 12px; max-width: 46em; margin-inline: auto; }
+
+/* tooltip */
+#tip { position: fixed; z-index: 90; pointer-events: none; background: #0b0316; border: 1px solid var(--cyan); color: var(--ink); font: 500 12px/1.4 var(--mono); padding: 7px 10px; max-width: 240px; opacity: 0; transition: opacity .1s; box-shadow: 0 0 16px rgba(25,227,255,.35); }
+#tip.on { opacity: 1; }
+
+@media (max-width: 860px) { .hero h1 { font-size: clamp(40px, 15vw, 100px); } .hero-in { grid-template-columns: minmax(0, 1fr); padding-block: 40px 150px; } .hero::after { background: linear-gradient(180deg, rgba(18,4,31,.7), rgba(18,4,31,.3)); } }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } *, *::before, *::after { animation: none !important; transition: none !important; } }
+</style>
+
+<header class="bar">
+  <div class="w">
+    <a class="logo" href="#top">HEAT_MAP</a>
+    <nav class="menu" aria-label="Missions menu">
+      <a href="#missions">Missions</a><a href="#select">Mission select</a><a href="#garage">Garage</a><a href="#leaderboard">Leaderboard</a><a href="#loot">Loot</a><a href="#hideout">Hideout</a><a href="#glitches">Glitches</a><a href="#controls">Controls</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+<section class="hero" id="top">
+  <svg class="scene" id="scene" viewBox="0 0 1600 700" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
+    <defs>
+      <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#12041f"/><stop offset=".42" stop-color="#2a0b4d"/><stop offset=".68" stop-color="#8a1d6e"/><stop offset=".86" stop-color="#ff2e93"/><stop offset="1" stop-color="#ffb347"/></linearGradient>
+      <linearGradient id="sunf" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd27a"/><stop offset=".55" stop-color="#ff7a3c"/><stop offset="1" stop-color="#ff2e93"/></linearGradient>
+      <linearGradient id="ground" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a0b4d"/><stop offset="1" stop-color="#12041f"/></linearGradient>
+      <mask id="slits"><rect width="1600" height="700" fill="#fff"/><rect y="420" width="1600" height="5" fill="#000"/><rect y="458" width="1600" height="8" fill="#000"/><rect y="496" width="1600" height="11" fill="#000"/><rect y="534" width="1600" height="14" fill="#000"/></mask>
+      <symbol id="palm" viewBox="0 0 240 400">
+        <path d="M100 400 C96 320 100 220 112 124" stroke="#08010f" stroke-width="10" fill="none" stroke-linecap="round"/>
+        <g fill="#08010f">
+          <path d="M112 124 C80 82 30 80 0 120 C40 100 80 102 112 124Z"/><path d="M112 124 C90 62 50 32 10 38 C55 60 85 87 112 124Z"/>
+          <path d="M112 124 C120 64 110 22 80 2 C96 44 100 82 112 124Z"/><path d="M112 124 C140 72 180 46 214 54 C176 74 140 94 112 124Z"/>
+          <path d="M112 124 C150 102 196 106 230 142 C190 122 150 120 112 124Z"/><path d="M112 124 C100 152 62 170 30 162 C62 150 92 140 112 124Z"/>
+          <path d="M112 124 C128 158 168 170 200 196 C160 178 130 152 112 124Z"/>
+        </g>
+      </symbol>
+    </defs>
+    <rect width="1600" height="700" fill="url(#sky)"/>
+    <g id="stars"></g>
+    <circle cx="800" cy="470" r="175" fill="url(#sunf)" mask="url(#slits)"/>
+    <g id="sky-line" fill="#1a0733" opacity=".95"></g>
+    <rect y="560" width="1600" height="140" fill="url(#ground)"/>
+    <rect y="559" width="1600" height="2" fill="#19e3ff" opacity=".7"/>
+    <use href="#palm" x="-30" y="190" width="300" height="500"/>
+    <use href="#palm" x="1400" y="250" width="240" height="400"/>
+    <use href="#palm" x="1270" y="320" width="170" height="283"/>
+  </svg>
+  <div class="floor"></div>
+  <div class="w hero-in">
+    <div>
+      <span class="tag">ISRO problem statement &middot; urban heat</span>
+      <h1>HEAT_MAP</h1>
+      <div class="wanted"><span>Wanted level</span><span class="stars" id="stars5"></span><span>Heatstroke</span></div>
+      <p class="lede">A U-Net hunts the hottest blocks in 50 Indian cities, from space. Then it tells you what drives the heat and how much green cools it down.</p>
+      <div class="cta"><a class="btn p" href="#missions">Press start</a><a class="btn s" href="#leaderboard">See the leaderboard</a></div>
+    </div>
+    <aside class="load" aria-label="Loading screen">
+      <h2>Loading level: India</h2>
+      <div class="lrow"><span>Satellite pass</span><b>100%</b><div class="lbar"><i></i></div></div>
+      <div class="lrow"><span>30 m pixels</span><b>100%</b><div class="lbar"><i></i></div></div>
+      <div class="lrow"><span>Cooling plan</span><b>100%</b><div class="lbar"><i></i></div></div>
+      <p>Landsat 8/9 &middot; March to May &middot; 2022 to 2025</p>
+    </aside>
+  </div>
+</section>
+
+<div class="w">
+  <div class="hud" id="hud"></div>
+</div>
+
+<!-- MISSIONS -->
+<section class="sec" id="missions"><div class="w">
+  <div class="head"><span class="eyebrow">Mission list</span><h2>Three tools, one cheat menu</h2><p class="sub">Which parts of a city are cooking, why, and how much green would it take to cool them down?</p></div>
+  <div class="missions">
+    <div class="panel mission"><span class="mno">Mission 1</span><h3>Where are the hotspots?</h3>
+      <ul><li>Average pixels into 600 m blocks</li><li>Flag blocks with Gi* z of 2.58 or more</li><li>Keep clusters at least 1 &deg;C above their neighbours</li></ul>
+      <span class="file">models/hotspot_report.py</span>
+      <div class="reward"><b id="r1">0.75 / 0.78</b><span>Jaipur precision / recall against hotspots found on observed temperature (held-out city)</span></div></div>
+    <div class="panel mission"><span class="mno">Mission 2</span><h3>What is driving them?</h3>
+      <ul><li>Six crews: vegetation, built-up, albedo, water, terrain, land cover</li><li>Switch one off, re-predict, repeat</li><li>Each gets its exact Shapley share in &deg;C</li></ul>
+      <span class="file">models/hotspot_report.py</span>
+      <div class="reward"><b id="r2">0.89</b><span>R&sup2; lost when vegetation is shuffled, the biggest drop of any group</span></div></div>
+    <div class="panel mission"><span class="mno">Mission 3</span><h3>What would cool it down?</h3>
+      <ul><li>Trees: non-water pixels with NDVI under 0.4 take the city's median tree values</li><li>Cool roofs: built-pixel albedo up by 0.15, capped at 0.6</li><li>The dose is the share converted when the gap closes</li></ul>
+      <span class="file">models/simulate_cooling.py</span>
+      <div class="reward"><b id="r3">40 %</b><span>trees close Jaipur's modelled 2.2 &deg;C gap</span></div></div>
+    <div class="panel mission bonus"><span class="mno">Bonus level</span><h3>Draw a box, anywhere</h3>
+      <ul><li>Draw a rectangle, 1 to 10 km a side</li><li>The app fetches Landsat, elevation, land cover and buildings</li><li>It runs the model and shows status, drivers and doses</li></ul>
+      <span class="file">dashboard/app.py</span>
+      <div class="reward"><b>~4 min</b><span>on a fresh area over a laptop connection. Instant the second time.</span></div></div>
+  </div>
+
+  <div class="panel cheat" id="cheat">
+    <div>
+      <span class="lab">Cheat menu &middot; try mission 3 yourself</span>
+      <div class="chips" id="areas" role="group" aria-label="Area"></div>
+      <div class="chips" id="levers" role="group" aria-label="Intervention"></div>
+      <label for="dose" class="note">Share of the changeable surface converted: <b id="dosev" style="color:#fff">0 %</b></label>
+      <input type="range" id="dose" min="0" max="100" value="0">
+    </div>
+    <div>
+      <div class="gap-big" id="gapv">0.0 &deg;C</div>
+      <div class="note" id="gapnote"></div>
+      <div class="track"><i id="gapbar"></i><em id="gapmark"></em></div>
+      <p class="note">Straight-line estimate between no change and the dose from our README. The model's real curve bends a little.</p>
+    </div>
+  </div>
+</div></section>
+
+<!-- MISSION SELECT -->
+<section class="sec" id="select"><div class="w">
+  <div class="head"><span class="eyebrow">Mission select</span><h2>Pick a city</h2><p class="sub">All 50 city tiles on the map. Tap a pulsing blue dot to open one of the 10 held-out cities and see its real satellite tile.</p></div>
+  <div class="mapgrid">
+    <div class="panel radar"><svg id="map" viewBox="0 0 400 430" role="img" aria-label="Map of India with the 50 study cities"></svg>
+      <div class="legend" style="margin:8px 0 0"><span style="--c:var(--pink)">40 training cities</span><span style="--c:var(--cyan)">10 held-out cities</span></div></div>
+    <div class="panel" id="citycard"></div>
+  </div>
+</div></section>
+
+<!-- GARAGE -->
+<section class="sec" id="garage"><div class="w">
+  <div class="head"><span class="eyebrow">The garage</span><h2>From satellite to cooling plan</h2><p class="sub">Four stations. Each one hands its result to the next.</p></div>
+  <div class="belt">
+    <div class="stn"><svg viewBox="0 0 52 52"><circle cx="26" cy="26" r="9"/><path d="M26 6v8M26 38v8M6 26h8M38 26h8M12 12l6 6M34 34l6 6M40 12l-6 6M18 34l-6 6"/></svg><h3>Satellites</h3><p>Landsat 8/9, elevation, land cover, buildings. Up to 40 clearest scenes per city.</p><i class="pulse"></i></div>
+    <div class="stn"><svg viewBox="0 0 52 52"><rect x="8" y="8" width="14" height="14"/><rect x="30" y="8" width="14" height="14"/><rect x="8" y="30" width="14" height="14"/><rect x="30" y="30" width="14" height="14"/></svg><h3>Features</h3><p>NDVI, NDBI, MNDWI, albedo, terrain, neighbours. 51 channels per pixel.</p><i class="pulse"></i></div>
+    <div class="stn"><svg viewBox="0 0 52 52"><path d="M8 10v22l10 10V20zM22 18v22M26 18v22M30 20v20M44 10v22L34 42"/></svg><h3>U-Net</h3><p>Predicts how much hotter or cooler each 30 m pixel is than its own city's average.</p><i class="pulse"></i></div>
+    <div class="stn"><svg viewBox="0 0 52 52"><path d="M26 6c6 8 12 12 12 22a12 12 0 0 1-24 0c0-10 6-14 12-22z"/><path d="M26 30v14M20 40l6-6 6 6"/></svg><h3>Tools</h3><p>Gi* hotspots, Shapley drivers, cooling doses, and the live dashboard.</p></div>
+  </div>
+  <div class="panel" style="margin-top:16px">
+    <span class="lab">51 input channels per pixel</span>
+    <div class="stack" id="chstack"></div><div class="legend" id="chkey" style="margin:0"></div>
+    <div class="spec">
+      <span>target <b>pixel temp minus city mean</b></span><span>loss <b>Huber</b></span><span>optimiser <b>AdamW lr 2e-3, wd 1e-2</b></span><span>schedule <b>one-cycle</b></span><span>batch <b>64</b></span><span>dropout <b>0.1</b></span><span>weight average <b>EMA 0.998</b></span><span>final run <b>--base 32 --epochs 7</b></span><span>hardware <b>4-core CPU</b></span><span>split <b>whole cities only</b></span>
+    </div>
+  </div>
+</div></section>
+
+<!-- LEADERBOARD -->
+<section class="sec" id="leaderboard"><div class="w">
+  <div class="head"><span class="eyebrow">Leaderboard</span><h2>10 held-out cities</h2><p class="sub">The model never trained on these. Pick a score to re-rank them.</p></div>
+  <div class="panel">
+    <div class="tabs" id="metrics" role="group" aria-label="Score"></div>
+    <div class="bars" id="board"></div>
+    <p class="note" style="margin-top:14px" id="boardnote"></p>
+  </div>
+
+  <div class="two" style="margin-top:16px">
+    <div class="panel">
+      <span class="lab">Upgrade shop &middot; first model vs final</span>
+      <div class="legend" style="margin-top:12px"><span style="--c:var(--m-amber)">First model</span><span style="--c:var(--m-cyan)">Smaller anomaly model</span><span style="--c:var(--m-pink)">Final model</span></div>
+      <div id="shop"></div>
+      <p class="note" id="shopnote" style="margin-top:12px"></p>
+      <div class="twist"><b>Plot twist.</b> Our first U-Net scored a shiny R&sup2; of 0.85 overall. Scored inside each city, Kolkata was worse than guessing the city average. Most of that 0.85 was "Jaipur is hotter than Dehradun".</div>
+    </div>
+    <div class="panel">
+      <span class="lab">Reality check &middot; cooling per +0.1 NDVI (&deg;C)</span>
+      <div class="legend" style="margin-top:12px"><span style="--c:var(--m-pink)">Model</span><span style="--c:var(--m-cyan)">Satellite data</span></div>
+      <div id="veg"></div>
+      <span class="lab" style="display:block;margin-top:26px">Who the model leans on &middot; R&sup2; lost when shuffled</span>
+      <div id="groups" style="margin-top:10px"></div>
+    </div>
+  </div>
+</div></section>
+
+<!-- LOOT -->
+<section class="sec" id="loot"><div class="w">
+  <div class="head"><span class="eyebrow">Loot table</span><h2>What each source drops</h2><p class="sub">Squares show how fine each layer is, drawn at one scale.</p></div>
+  <div class="loot" id="lootgrid"></div>
+  <div class="ds" id="ds"></div>
+  <p class="note" style="margin-top:10px">Cyan check: used by the model. Outlined: collected, not a model input. Dashed: allowed by the problem statement, not used.</p>
+</div></section>
+
+<!-- HIDEOUT -->
+<section class="sec" id="hideout"><div class="w">
+  <div class="head"><span class="eyebrow">The hideout</span><h2>Where it ran, what it cost</h2></div>
+  <div class="panel hide">
+    <div class="donut"><svg viewBox="0 0 140 140" id="donut" role="img" aria-label="Azure spend by component"></svg><div class="mid"><b>&#8377;5,979</b><span>total spend</span></div></div>
+    <div id="costrows"></div>
+  </div>
+  <div class="pills"><span>4-core Azure ML instance</span><span>Region: UAE North</span><span>CI: tests on every push</span><span>Docker image, CPU only</span><span>Deploy: Azure Container Apps or Hugging Face</span></div>
+</div></section>
+
+<!-- GLITCHES -->
+<section class="sec" id="glitches"><div class="w">
+  <div class="head"><span class="eyebrow">Known glitches</span><h2>Said out loud</h2></div>
+  <div class="glitches" id="glgrid"></div>
+</div></section>
+
+<!-- CONTROLS -->
+<section class="sec" id="controls"><div class="w">
+  <div class="head"><span class="eyebrow">Controls</span><h2>Run it yourself</h2></div>
+  <div class="chips" id="codetabs" role="group" aria-label="Command set"></div>
+  <div class="code"><button class="copy" id="copybtn" type="button">Copy</button><pre id="codeout"></pre></div>
+
+  <div class="panel psbox">
+    <span class="tag">ISRO &middot; problem statement</span>
+    <h3>Optimizing urban heat mitigation and cooling strategies via AI/ML</h3>
+    <div class="ps5">
+      <div><small>Heat stress maps</small><b>Ranked Gi* hotspot clusters</b></div>
+      <div><small>Drivers of urban heat</small><b>Six feature groups, split in &deg;C</b></div>
+      <div><small>Validated AI/ML model</small><b>U-Net, R&sup2; 0.72 on 10 held-out cities</b></div>
+      <div><small>Cooling scenarios</small><b>Trees and cool roofs, re-predicted</b></div>
+      <div><small>Optimal intervention</small><b>Dose and &deg;C cut per hotspot, e.g. 40&nbsp;% trees</b></div>
+    </div>
+  </div>
+
+  <div class="links">
+    <div class="panel"><h3>Links</h3><ul>
+      <li><a href="https://github.com/Rounaksondawale/Heat_Map" rel="noopener" target="_blank">Repository: github.com/Rounaksondawale/Heat_Map</a></li>
+      <li><a href="https://claude.ai/artifact/YRye9qJcAnkZ4KuYPcUK1L" rel="noopener" target="_blank">Full results dashboard</a></li>
+      <li><a href="https://github.com/Rounaksondawale/Heat_Map/tree/main/docs" rel="noopener" target="_blank">README figures (docs/)</a></li></ul>
+      <h3 style="margin-top:16px">Data sources</h3><ul>
+      <li><a href="https://planetarycomputer.microsoft.com" rel="noopener" target="_blank">Microsoft Planetary Computer</a></li>
+      <li><a href="https://www.usgs.gov/landsat-missions" rel="noopener" target="_blank">USGS / NASA Landsat 8 and 9</a></li>
+      <li><a href="https://esa-worldcover.org" rel="noopener" target="_blank">ESA WorldCover</a></li>
+      <li><a href="https://human-settlement.emergency.copernicus.eu" rel="noopener" target="_blank">JRC Global Human Settlement Layer</a></li>
+      <li><a href="https://spacedata.copernicus.eu/collections/copernicus-digital-elevation-model" rel="noopener" target="_blank">Copernicus DEM GLO-30</a></li>
+      <li><a href="https://open-meteo.com" rel="noopener" target="_blank">Open-Meteo (ERA5-based weather)</a></li></ul></div>
+    <div class="panel"><h3>References</h3><ul>
+      <li>Ronneberger, Fischer, Brox (2015). U-Net: convolutional networks for biomedical image segmentation. <a href="https://arxiv.org/abs/1505.04597" rel="noopener" target="_blank">arXiv:1505.04597</a></li>
+      <li>Ord, Getis (1995). Local spatial autocorrelation statistics: distributional issues and an application. <i>Geographical Analysis</i> 27(4). The Gi* hotspot statistic.</li>
+      <li>Shapley (1953). A value for n-person games. The basis of the driver split.</li></ul>
+      <h3 style="margin-top:16px">Imagery credit</h3>
+      <p class="note">City tiles: Sentinel-2 cloudless 2020 by EOX IT Services GmbH (contains modified Copernicus Sentinel data), CC BY-NC 4.0.</p></div>
+  </div>
+</div></section>
+</main>
+
+<footer><div class="w"><h2>Thanks for playing</h2><p>Stay cool out there. Plant a tree. Paint a roof white.</p>
+<small>HEAT_MAP, built for an ISRO problem statement on urban heat. Numbers are from the project README tables and per-city evaluation, rounded to two decimals. Check each data source's licence before reuse.</small></div></footer>
+<div id="tip" role="tooltip"></div>
+
+<script>
+(function () {
+  var D = /*DATA*/null;
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var el = function (t, c, h) { var e = document.createElement(t); if (c) e.className = c; if (h != null) e.innerHTML = h; return e; };
+  var f2 = function (v) { return Number(v).toFixed(2); };
+  var NS = 'http://www.w3.org/2000/svg';
+
+  /* ---- hero scene: stars, skyline, wanted stars ---- */
+  (function () {
+    var g = $('#stars'), s = '', i, seed = 7;
+    function rnd() { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; }
+    for (i = 0; i < 70; i++) s += '<circle cx="' + (rnd() * 1600).toFixed(0) + '" cy="' + (rnd() * 330).toFixed(0) + '" r="' + (rnd() * 1.6 + .4).toFixed(1) + '" fill="#fff" opacity="' + (rnd() * .7 + .25).toFixed(2) + '"/>';
+    g.innerHTML = s;
+    var sk = $('#sky-line'), x = 330, h2 = '';
+    while (x < 1300) { var w = 24 + rnd() * 44, h = 40 + rnd() * 150; h2 += '<rect x="' + x.toFixed(0) + '" y="' + (560 - h).toFixed(0) + '" width="' + w.toFixed(0) + '" height="' + h.toFixed(0) + '"/>'; x += w + 3 + rnd() * 4; }
+    sk.innerHTML = h2;
+    var st = '<svg viewBox="0 0 24 24"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.7 7-6.3-3.8-6.3 3.8 1.7-7L2 9.2l7.1-.6z"/></svg>';
+    $('#stars5').innerHTML = st + st + st + st + st;
+  })();
+
+  /* ---- tooltip (hover layer for every mark) ---- */
+  var tip = $('#tip');
+  document.addEventListener('pointermove', function (e) {
+    var t = e.target.closest ? e.target.closest('[data-tip]') : null;
+    if (!t) { tip.classList.remove('on'); return; }
+    tip.textContent = t.getAttribute('data-tip'); tip.classList.add('on');
+    var x = Math.min(window.innerWidth - tip.offsetWidth - 10, e.clientX + 14), y = Math.min(window.innerHeight - tip.offsetHeight - 10, e.clientY + 16);
+    tip.style.left = Math.max(8, x) + 'px'; tip.style.top = Math.max(8, y) + 'px';
+  });
+
+  /* ---- HUD stats ---- */
+  var hud = [['50', '', 'Indian cities'], ['40', '+10', 'train and held-out'], ['89', 'M', 'pixels, 30 m each'], ['40', 'km', 'tile per city'], ['51', '', 'input channels'], ['2', 'M', 'model parameters']];
+  $('#hud').innerHTML = hud.map(function (h) { return '<div><b>' + h[0] + '<small>' + h[1] + '</small></b><span>' + h[2] + '</span></div>'; }).join('');
+
+  /* ---- rewards from data ---- */
+  var jp = D.hotspot.Jaipur; $('#r1').textContent = f2(jp.precision) + ' / ' + f2(jp.recall);
+  $('#r2').textContent = f2(D.groups.rows[0].R2_drop);
+  $('#r3').textContent = D.cooling[0].veg_dose_pct + ' %';
+
+  /* ---- cheat menu ---- */
+  var AREAS = [
+    {k: 'Jaipur hotspot', gap: D.cooling[0].pred_gap_C, d: {Trees: 40}},
+    {k: 'Delhi block', gap: D.cooling[1].pred_gap_C, d: {Trees: 45, Roofs: 99, Both: 35}},
+    {k: 'Delhi area', gap: D.cooling[2].pred_gap_C, d: {Trees: 30, Roofs: 48, Both: 21}}
+  ];
+  var S = {a: 0, l: 'Trees', dose: 0};
+  function chips(box, items, active, attr, ok) {
+    box.innerHTML = items.map(function (it, i) { var on = attr === 'a' ? i === active : it === active; var dis = ok && !ok(it); return '<button type="button" class="chip" data-' + attr + '="' + (attr === 'a' ? i : it) + '" aria-pressed="' + on + '"' + (dis ? ' disabled' : '') + '>' + (attr === 'a' ? it.k : (it === 'Roofs' ? 'Cool roofs' : it === 'Trees' ? 'Plant trees' : 'Both')) + '</button>'; }).join('');
+  }
+  function sim() {
+    var A = AREAS[S.a]; if (A.d[S.l] == null) S.l = 'Trees';
+    chips($('#areas'), AREAS, S.a, 'a'); chips($('#levers'), ['Trees', 'Roofs', 'Both'], S.l, 'l', function (l) { return A.d[l] != null; });
+    var close = A.d[S.l], left = Math.max(0, A.gap * (1 - S.dose / close));
+    $('#dosev').textContent = S.dose + ' %';
+    $('#gapv').textContent = left.toFixed(1) + ' °C';
+    $('#gapnote').textContent = 'hotter than its surroundings' + (left <= 0.05 ? ' — gap closed!' : '') + ' (starts at ' + A.gap.toFixed(1) + ' °C)';
+    $('#gapbar').style.width = Math.min(100, left / A.gap * 100) + '%';
+    $('#gapmark').style.left = Math.min(99, close) + '%';
+  }
+  $('#cheat').addEventListener('click', function (e) { var b = e.target.closest('.chip'); if (!b || b.disabled) return; if (b.dataset.a != null) S.a = +b.dataset.a; if (b.dataset.l) S.l = b.dataset.l; sim(); });
+  $('#dose').addEventListener('input', function () { S.dose = +this.value; sim(); });
+  sim();
+
+  /* ---- map + city card ---- */
+  var rows = {}; D.perCity.forEach(function (r) { rows[r.city] = r; });
+  var ranked = D.perCity.slice().sort(function (a, b) { return b.R2_within - a.R2_within; });
+  var LON0 = 67, LON1 = 98.5, LAT0 = 5.5, LAT1 = 37.5, KX = Math.cos(21 * Math.PI / 180), W = 400, H = 430, pad = 10;
+  var sc = Math.min((W - 2 * pad) / ((LON1 - LON0) * KX), (H - 2 * pad) / (LAT1 - LAT0)), ox = (W - (LON1 - LON0) * KX * sc) / 2, oy = (H - (LAT1 - LAT0) * sc) / 2;
+  function pr(lon, lat) { return [ox + (lon - LON0) * KX * sc, oy + (LAT1 - lat) * sc]; }
+  var map = $('#map'), land = '';
+  D.india.forEach(function (ring) { land += 'M' + ring.map(function (p) { var q = pr(p[0], p[1]); return q[0].toFixed(1) + ' ' + q[1].toFixed(1); }).join('L') + 'Z'; });
+  var svg = '<path d="' + land + '" fill="rgba(255,255,255,.07)" stroke="rgba(25,227,255,.7)" stroke-width="1.5"/>';
+  D.cities.forEach(function (c) { if (c.split === 'val') return; var p = pr(c.lon, c.lat); svg += '<circle class="dot-t" cx="' + p[0].toFixed(1) + '" cy="' + p[1].toFixed(1) + '" r="3.4" data-tip="' + c.city + ' · training city"/>'; });
+  var hv = '';
+  D.cities.forEach(function (c) { if (c.split !== 'val') return; var p = pr(c.lon, c.lat); hv += '<g class="dot-h" data-c="' + c.city + '" tabindex="0" role="button" aria-label="' + c.city + '" data-tip="' + c.city + ' · R² ' + f2(rows[c.city].R2_within) + '"><circle class="ring" cx="' + p[0].toFixed(1) + '" cy="' + p[1].toFixed(1) + '" r="9"/><circle class="core" cx="' + p[0].toFixed(1) + '" cy="' + p[1].toFixed(1) + '" r="8"/></g>'; });
+  map.innerHTML = svg + hv;
+  var cur = ranked[0].city;
+  function metricRow(label, v, frac, tipText) { return '<div data-tip="' + tipText + '"><span>' + label + '</span><span class="t" style="height:12px;background:rgba(255,255,255,.09)"><i class="bar-i" style="width:' + Math.round(frac * 100) + '%;background:var(--m-cyan)"></i></span><b>' + v + '</b></div>'; }
+  function card() {
+    var r = rows[cur], im = D.imagery[cur], rank = ranked.findIndex(function (x) { return x.city === cur; }) + 1;
+    $('#citycard').innerHTML =
+      '<div class="city-tabs" id="ctabs">' + ranked.map(function (x) { return '<button type="button" data-c="' + x.city + '" aria-pressed="' + (x.city === cur) + '">' + x.city + '</button>'; }).join('') + '</div>' +
+      '<div class="cityline"><div class="shot" style="background-image:url(' + im.img + ')" role="img" aria-label="Satellite tile of ' + cur + '"><span class="cross"></span><span class="tagbox" style="left:8px;top:8px">' + im.bbox[3].toFixed(2) + '°N ' + im.bbox[0].toFixed(2) + '°E</span><span class="tagbox" style="right:8px;bottom:8px">40 km tile</span></div>' +
+      '<div><div class="cname">' + cur + '</div><p class="note">' + im.lat.toFixed(3) + '°N, ' + im.lon.toFixed(3) + '°E &middot; rank ' + rank + ' of 10 by R²</p>' +
+      '<div class="score">' + metricRow('R² inside', f2(r.R2_within), r.R2_within, 'R² inside the city, as scored') + metricRow('Spearman', f2(r.spearman), r.spearman, 'Rank match, cool to hot') + metricRow('Hot AUC', f2(r.hot_AUC), r.hot_AUC, 'Finds the hottest 10 % of pixels (random is 0.50)') + metricRow('Hot F1', f2(r.hot_F1), r.hot_F1, 'Hotspot precision and recall balance') + '</div>' +
+      '<p class="note" style="margin-top:12px">Typical pattern error <b style="color:#fff">' + f2(r.MAE) + ' °C</b> with the city mean given.</p></div></div>';
+    document.querySelectorAll('.dot-h').forEach(function (g) { g.classList.toggle('on', g.dataset.c === cur); });
+  }
+  function pick(c) { cur = c; card(); }
+  map.addEventListener('click', function (e) { var g = e.target.closest('.dot-h'); if (g) pick(g.dataset.c); });
+  map.addEventListener('keydown', function (e) { var g = e.target.closest('.dot-h'); if (g && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); pick(g.dataset.c); } });
+  $('#citycard').addEventListener('click', function (e) { var b = e.target.closest('[data-c]'); if (b) pick(b.dataset.c); });
+  card();
+
+  /* ---- 51 channels ---- */
+  var CH = [['Surface', 4, '#4f8a4c'], ['Terrain', 2, '#8f98a3'], ['Urban form', 3, '#b13f3c'], ['Distances', 2, '#b8935a'], ['Neighbourhood', 6, '#5598e7'], ['Surroundings', 28, '#00a0c4'], ['City-relative', 6, '#f2318f']];
+  var chTot = CH.reduce(function (a, c) { return a + c[1]; }, 0);
+  $('#chstack').innerHTML = CH.map(function (c) { return '<i style="width:' + (c[1] / chTot * 100) + '%;background:' + c[2] + '" data-tip="' + c[0] + ': ' + c[1] + ' channels"></i>'; }).join('');
+  $('#chkey').innerHTML = CH.map(function (c) { return '<span style="--c:' + c[2] + '">' + c[0] + ' ' + c[1] + '</span>'; }).join('');
+
+  /* ---- leaderboard ---- */
+  var MET = [['R2_within', 'R² inside', 1, 'hi'], ['spearman', 'Spearman', 1, 'hi'], ['hot_AUC', 'Hot AUC', 1, 'hi'], ['hot_F1', 'Hot F1', 1, 'hi'], ['MAE', 'Error °C', 2.2, 'lo']];
+  var metric = MET[0];
+  $('#metrics').innerHTML = MET.map(function (m, i) { return '<button type="button" class="chip" data-i="' + i + '" aria-pressed="' + (i === 0) + '">' + m[1] + '</button>'; }).join('');
+  function board() {
+    var k = metric[0], lo = metric[3] === 'lo', list = D.perCity.slice().sort(function (a, b) { return lo ? a[k] - b[k] : b[k] - a[k]; });
+    var meanV = D.mean[k];
+    $('#board').innerHTML = list.map(function (r, i) {
+      return '<div class="brow r' + (i + 1) + '" data-tip="' + r.city + ': ' + metric[1] + ' ' + f2(r[k]) + '"><span class="rk">' + (i + 1) + '</span><span>' + r.city + '</span><span class="t"><i style="width:' + (r[k] / metric[2] * 100).toFixed(1) + '%;background:var(--m-cyan);animation-delay:' + (i * 40) + 'ms"></i><span class="avg" style="left:' + (meanV / metric[2] * 100).toFixed(1) + '%"></span></span><b>' + f2(r[k]) + '</b></div>';
+    }).join('');
+    $('#boardnote').textContent = 'White line: mean of the 10 cities (' + f2(meanV) + '). ' + (lo ? 'Lower is better; error is measured with each city’s mean given, so it shows pattern error.' : 'Higher is better.');
+  }
+  $('#metrics').addEventListener('click', function (e) { var b = e.target.closest('.chip'); if (!b) return; metric = MET[+b.dataset.i]; document.querySelectorAll('#metrics .chip').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); }); board(); });
+  board();
+
+  /* ---- upgrade shop ---- */
+  var SER = [['First model', 'var(--m-amber)'], ['Smaller anomaly model', 'var(--m-cyan)'], ['Final model', 'var(--m-pink)']];
+  var SM = [['R2_anomaly', 'R² inside (offset removed)'], ['spearman', 'Spearman'], ['hot_AUC', 'Hot AUC'], ['hot_F1', 'Hot F1']];
+  $('#shop').innerHTML = SM.map(function (m) {
+    return '<div class="mgroup"><h4>' + m[1] + '</h4>' + D.models.map(function (r, i) { return '<div class="mrow" data-tip="' + SER[i][0] + ': ' + f2(r[m[0]]) + '"><span class="t"><i class="bar-i" style="width:' + (r[m[0]] * 100) + '%;background:' + SER[i][1] + ';animation-delay:' + (i * 90) + 'ms"></i></span><b>' + f2(r[m[0]]) + '</b></div>'; }).join('') + '</div>';
+  }).join('');
+  $('#shopnote').textContent = 'Cities worse than "every pixel = city average": ' + D.models.map(function (r) { return r.cities_worse_than_city_mean; }).join(' / ') + ' for first / smaller / final.';
+
+  /* ---- vegetation check + importance ---- */
+  $('#veg').innerHTML = D.veg.map(function (v) {
+    return '<div class="mgroup"><h4>' + v.city + '</h4><div class="mrow" data-tip="Model: ' + v.model.toFixed(1) + ' °C"><span class="t"><i class="bar-i" style="width:' + v.model / 2.2 * 100 + '%;background:var(--m-pink)"></i></span><b>' + v.model.toFixed(1) + '</b></div><div class="mrow" data-tip="Satellite data: ' + v.data.toFixed(1) + ' °C"><span class="t"><i class="bar-i" style="width:' + v.data / 2.2 * 100 + '%;background:var(--m-cyan)"></i></span><b>' + v.data.toFixed(1) + '</b></div></div>';
+  }).join('');
+  var gr = D.groups.rows.map(function (g) { return [g.group, g.R2_drop]; }); gr.push(['everything else', D.groups.rest_below]);
+  $('#groups').innerHTML = gr.map(function (g, i) { return '<div class="mrow" style="grid-template-columns:110px minmax(0,1fr) 46px;margin-top:6px" data-tip="' + g[0] + ': ' + (i === 3 ? 'under ' : '') + g[1] + '"><span style="font-size:13px;color:var(--ink2)">' + g[0] + '</span><span class="t"><i class="bar-i" style="width:' + g[1] * 100 + '%;background:var(--m-pink)"></i></span><b>' + (i === 3 ? '&lt;' : '') + f2(g[1]).replace(/^0\.0(\d)$/, '0.$1') + '</b></div>'; }).join('');
+
+  /* ---- loot ---- */
+  function grid(n, cell, col) { var s = '<svg viewBox="0 0 72 72" aria-hidden="true">', i, j; for (i = 0; i < n; i++) for (j = 0; j < n; j++) s += '<rect x="' + j * cell + '" y="' + i * cell + '" width="' + (cell - 1) + '" height="' + (cell - 1) + '" fill="' + col + '" opacity="' + (.5 + .5 * ((i * 7 + j * 3) % 5) / 4).toFixed(2) + '"/>'; return s + '</svg>'; }
+  var LOOT = [
+    ['Landsat 8/9', 'Heat from the thermal band (the target). Plant, built-up, water and reflectivity maps from the colour bands. Cloud mask from QA.', '30 m · Mar–May 2022–25', 3, 24, '#4f8a4c'],
+    ['Copernicus DEM', 'Elevation, then slope.', '30 m · static', 3, 24, '#8f98a3'],
+    ['ESA WorldCover', 'Land-cover class: trees, crops, built-up, water and more.', '10 m → 30 m', 9, 8, '#b8935a'],
+    ['JRC GHSL R2023A', 'Building height, built-up surface, population.', '~90 m → 30 m', 1, 72, '#b13f3c']
+  ];
+  $('#lootgrid').innerHTML = LOOT.map(function (l) { return '<div class="panel drop">' + grid(l[3], l[4], l[5]) + '<h3>' + l[0] + '</h3><p>' + l[1] + '</p><em>' + l[2] + '</em></div>'; }).join('');
+  $('#ds').innerHTML = ['<span class="y">Landsat 8/9 surface temperature</span>', '<span class="y">ESA WorldCover</span>', '<span class="y">JRC GHSL</span>', '<span class="y">Copernicus DEM</span>', '<span class="p">ERA5 weather via Open-Meteo: audit only</span>', '<span class="n">ECOSTRESS</span>', '<span class="n">CPCB air data</span>', '<span class="n">OpenStreetMap</span>', '<span class="n">UT-GLOBUS</span>', '<span class="n">SOLWEIG / InVEST</span>'].join('');
+
+  /* ---- hideout cost ---- */
+  var COST = [['Compute', 'Virtual machines: extraction and U-Net training', 3742, 'var(--m-cyan)'], ['Storage', 'Disks and files: grids, patches, checkpoints', 2172, 'var(--m-pink)'], ['Network', 'Load balancer and bandwidth', 64.81, 'var(--m-amber)'], ['Secrets', 'Key Vault', 0.01, 'var(--m-violet)']];
+  var tot = COST.reduce(function (a, c) { return a + c[2]; }, 0), R = 54, C = 2 * Math.PI * R, off = 0;
+  function inr(v) { return '₹' + (v < 1 ? v.toFixed(2) : Math.round(v).toLocaleString('en-IN')); }
+  $('#donut').innerHTML = '<circle cx="70" cy="70" r="' + R + '" fill="none" stroke="rgba(255,255,255,.1)" stroke-width="22"/>' + COST.map(function (c) { var f = c[2] / tot, len = Math.max(f * C - 2, f > 0 ? 1.5 : 0), s = '<circle cx="70" cy="70" r="' + R + '" fill="none" stroke="' + c[3] + '" stroke-width="22" stroke-dasharray="' + len.toFixed(2) + ' ' + (C - len).toFixed(2) + '" stroke-dashoffset="' + (-off).toFixed(2) + '" transform="rotate(-90 70 70)" data-tip="' + c[0] + ': ' + inr(c[2]) + '"/>'; off += f * C; return s; }).join('');
+  $('#costrows').innerHTML = COST.map(function (c) { return '<div class="crow"><span class="d" style="background:' + c[3] + '"></span><div><b>' + c[0] + '</b><small>' + c[1] + '</small></div><div class="amt">' + inr(c[2]) + '<small>' + Math.round(c[2] / tot * 100) + '%</small></div></div>'; }).join('') +
+    '<div class="crow off"><span class="d"></span><div><b>App hosting</b><small>Container Apps or Hugging Face: no line in this bill</small></div><div class="amt">–</div></div>' +
+    '<p class="note" style="margin-top:10px">About ' + inr(tot / 50) + ' per city (total ÷ 50 cities). Compute is ' + Math.round(COST[0][2] / tot * 100) + '% of the spend. Results are files on the instance disk, not in the repo.</p>';
+
+  /* ---- glitches ---- */
+  var GL = [
+    ['One split, one run', 'No confidence intervals, no non-neural baseline, no ablation. We cannot say which fix mattered most.'],
+    ['Scores run a bit high', 'The 10 held-out cities also picked the best training epoch. Think "about 0.7", not 0.74.'],
+    ['Peaks come out low', 'The hottest pixels are underestimated by about ' + Math.abs(D.mean.hot_bias).toFixed(2) + ' °C on average, about 4 °C in Dehradun.'],
+    ['Surface, not street', 'It predicts land surface temperature at a late-morning, clear-day pass in March to May. Not air temperature.'],
+    ['Attribution, not proof', 'Drivers and doses show what the model relies on. Real planting comes as parks and tree rows, not scattered pixels.'],
+    ['Heat outside our data', 'Traffic, industry and air conditioning show up as the "not explained" gap.'],
+    ['Big arid cities', 'Jaipur gives large hot zones, not compact hotspots.'],
+    ['Delhi is in-sample', 'Delhi is a training city, so its hotspot and cooling numbers are in-sample. Jaipur’s are held out.'],
+    ['Live mode is rougher', 'About 20 scenes instead of up to 40, and statistics relative to a smaller window.'],
+    ['Missing file', 'Deploy/meta.json is not in the repo yet, so the container build stops until it is added next to Deploy/best.pt.']
+  ];
+  var glIcon = '<svg viewBox="0 0 32 32"><path d="M16 4L2 28h28z"/><path d="M16 13v7M16 24v.5"/></svg>';
+  $('#glgrid').innerHTML = GL.map(function (g) { return '<div class="gl">' + glIcon + '<div><b>' + g[0] + '</b><p>' + g[1] + '</p></div></div>'; }).join('');
+
+  /* ---- controls ---- */
+  var CODE = {
+    'Run the dashboard': ['git clone https://github.com/Rounaksondawale/Heat_Map.git', 'cd Heat_Map', 'pip install -r requirements-app.txt', 'pip install torch', 'python dashboard/check_setup.py        # tells you what is still missing', 'streamlit run dashboard/app.py'],
+    'In a container': ['docker build -t urban-heat .', 'docker run -p 8501:8501 urban-heat'],
+    'Rebuild the pipeline': ['# Python 3.10, about 32 GB RAM, hours of network time', 'python extraction/build_dataset.py --out data/multi_city --workers 4', 'python pre_processing/export_city_grids.py --workers 4', 'python pre_processing/make_patches.py --workers 4', 'python models/train_unet.py --base 32 --epochs 7 --out data/unet_run3', 'python models/evaluate_unet.py --run data/unet_run3', 'python models/hotspot_report.py --city Delhi Jaipur', 'python models/simulate_cooling.py --city Delhi --auto 20 --min-built 0.4']
+  };
+  var names = Object.keys(CODE), curTab = names[0];
+  function esc(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
+  function code() {
+    $('#codetabs').innerHTML = names.map(function (n) { return '<button type="button" class="chip" data-n="' + n + '" aria-pressed="' + (n === curTab) + '">' + n + '</button>'; }).join('');
+    $('#codeout').innerHTML = CODE[curTab].map(function (l) { return esc(l).replace(/(#.*)$/, '<span class="c">$1</span>'); }).join('\n');
+  }
+  $('#codetabs').addEventListener('click', function (e) { var b = e.target.closest('.chip'); if (b) { curTab = b.dataset.n; code(); } });
+  $('#copybtn').addEventListener('click', function () {
+    var btn = this, text = CODE[curTab].join('\n');
+    function done(ok) { btn.textContent = ok ? 'Copied' : 'Select text'; setTimeout(function () { btn.textContent = 'Copy'; }, 1600); }
+    function fallback() { var r = document.createRange(); r.selectNodeContents($('#codeout')); var s = window.getSelection(); s.removeAllRanges(); s.addRange(r); done(false); }
+    try { navigator.clipboard.writeText(text).then(function () { done(true); }, fallback); } catch (e) { fallback(); }
+  });
+  code();
+})();
+</script>
